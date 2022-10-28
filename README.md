@@ -1,8 +1,8 @@
-# Search Hyperparameters with optuna
+# Search Hyperparameters with [optuna](https://optuna.org/)
 
 |dataset|model|Sampler|Pruner|
 |-------|-----|-------|------|
-|Cora|APPNP|TPESampler|HyperBandPruner|
+|Cora|[APPNP](https://arxiv.org/abs/1810.05997)|TPESampler|HyperBandPruner|
 
 |optimizer|
 |-------|
