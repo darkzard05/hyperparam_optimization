@@ -23,8 +23,8 @@ data = dataset[0].to(device)
 model_name = 'appnp' # model: appnp, splineconv
 
 def define_model(trial):
-    model = getattr(model, model_name)(dataset, trial)
-    return model.to(device)
+    model_ = getattr(model, model_name)(dataset, trial)
+    return model_.to(device)
 
 def train(model, optimizer):
     model.train()
@@ -60,18 +60,19 @@ def objective(trial):
     
     model.reset_parameters()
     
+    best_val_acc = 0
     best_test_acc = 0
     
-    for epoch in range(200):
+    for epoch in range(1, 201):
         loss = train(model, optimizer)
         train_acc = test(model, data.train_mask)
         val_acc = test(model, data.val_mask)
         test_acc = test(model, data.test_mask)
-        # if best_val_acc < val_acc:
-        #     best_val_acc = val_acc
-        #     best_test_acc = test_acc
-        if best_test_acc < test_acc:
+        
+        if best_val_acc < val_acc:
+            best_val_acc = val_acc
             best_test_acc = test_acc
+            print(f'epoch: {epoch}, loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc}, test_acc: {test_acc}')
 
         trial.report(best_test_acc, epoch)
         
