@@ -17,7 +17,7 @@
 |number of linear layers|1|3|
 |number of units|5|200|
 |K|1|200|
-|alpha|0|1|
+|alpha|0|0.2|
 
 
 
