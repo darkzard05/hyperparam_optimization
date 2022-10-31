@@ -8,7 +8,7 @@ class appnp(torch.nn.Module):
         super().__init__()
         self.num_layers = trial.suggest_int('num_layers', 1, 3)
         self.K = trial.suggest_int('K', 1, 200)
-        self.alpha = trial.suggest_float('alpha', 0, 1)
+        self.alpha = trial.suggest_float('alpha', 0, 0.2)
         self.units_list = []
         if self.num_layers >= 2:
             for epoch in range(self.num_layers-1):
