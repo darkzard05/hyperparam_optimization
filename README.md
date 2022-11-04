@@ -11,9 +11,9 @@
 |HyperParameters|min|max|
 |-----|---|---|
 |learning rate|0|1|
-|weight decay|0|1|
+|weight decay|0|0.5|
 |eps|0|1|
-|dropout|0.1|0.5|
+|dropout|0.1|0.9|
 |number of linear layers|1|3|
 |number of units|5|200|
 |K|1|200|
