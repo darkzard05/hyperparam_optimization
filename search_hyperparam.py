@@ -11,6 +11,8 @@ from optuna.trial import TrialState
 import model
 
 dataset_name = 'Cora' # dataset: Cora, PubMed, CiteSeer
+model_name = 'appnp' # model: appnp, splineconv
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device, 'is available')
 dataset = Planetoid(root='/data/'+dataset_name,
@@ -20,7 +22,6 @@ dataset = Planetoid(root='/data/'+dataset_name,
                     )
 
 data = dataset[0].to(device)
-model_name = 'appnp' # model: appnp, splineconv
 
 def define_model(trial):
     model_ = getattr(model, model_name)(dataset, trial)
@@ -48,11 +49,12 @@ def test(model, mask):
 def objective(trial):
     model = define_model(trial)
     
-    lr = trial.suggest_float('learning_rate', 0, 1)
-    weight_decay = trial.suggest_float('weight_decay', 0, 1)
-    eps = trial.suggest_float('eps', 0, 1)
+    lr = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
+    weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
+    eps = trial.suggest_float('eps', 1e-10, 1e-6, log=True)
     optim_name = trial.suggest_categorical('optimizer',
                                            ['Adam', 'NAdam', 'AdamW', 'RAdam'])
+    
     optimizer = getattr(optim, optim_name)(model.parameters(),
                                            lr=lr,
                                            eps=eps,
@@ -73,7 +75,7 @@ def objective(trial):
             best_val_acc = val_acc
             best_test_acc = test_acc
             print(f'epoch: {epoch}, loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc}, test_acc: {test_acc}')
-
+            
         trial.report(best_test_acc, epoch)
         
         if trial.should_prune():
@@ -83,7 +85,7 @@ def objective(trial):
 
 study_name = dataset_name + '_' + model_name + '_study'
 storage_name = f'sqlite:///{study_name}.db'
-n_trials = 200
+n_trials = 50
 
 study = optuna.create_study(study_name = study_name,
                             storage = storage_name,
