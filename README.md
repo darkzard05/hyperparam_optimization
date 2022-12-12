@@ -1,4 +1,4 @@
-# Search Hyperparameters with [optuna](https://optuna.org/)
+# Node Classification of Hyperparameter optimization with [optuna](https://optuna.org/)
 
 |dataset|model|Sampler|Pruner|
 |-------|-----|-------|------|
@@ -20,5 +20,15 @@
 |alpha|0|0.2|
 
 
-
-* best accuracy 0.85
+- Requirements
+```
+torch, torch_geometric
+```
+- Run all 
+```
+python main.py
+```
+- best accuracy
+```
+0.85
+```
