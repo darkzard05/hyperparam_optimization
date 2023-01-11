@@ -37,23 +37,27 @@ def objective(trial):
     lr = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
     eps = trial.suggest_float('eps', 1e-10, 1e-6, log=True)
-    optim_name = trial.suggest_categorical('optimizer',
-                                           ['Adam', 'NAdam', 'AdamW', 'RAdam'])
+    # optim_name = trial.suggest_categorical('optimizer',
+    #                                        ['Adam', 'NAdam', 'AdamW', 'RAdam'])
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = getattr(nn_model, args.model)(dataset, trial)
     model.to(device)
     
-    optimizer = getattr(optim, optim_name)(model.parameters(),
-                                           lr=lr,
-                                           eps=eps,
-                                           weight_decay=weight_decay)
+    # optimizer = getattr(optim, optim_name)(model.parameters(),
+    #                                        lr=lr,
+    #                                        eps=eps,
+    #                                        weight_decay=weight_decay)
+    optimizer = optim.Adam(model.parameters(),
+                           lr=lr,
+                           eps=eps,
+                           weight_decay=weight_decay)
     model.reset_parameters()
     
     best_val_acc = 0
     best_test_acc = 0
     
-    for epoch in range(1, 201):
+    for epoch in range(1, args.epochs+1):
         loss = train(data, model, optimizer)
         train_acc = test(data, model, data.train_mask)
         val_acc = test(data, model, data.val_mask)
@@ -64,7 +68,7 @@ def objective(trial):
             best_test_acc = test_acc
             print(f'epoch: {epoch}, loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc}, test_acc: {test_acc}')
             
-        trial.report(best_test_acc, epoch)
+        trial.report(val_acc, epoch)
         
         if trial.should_prune():
             raise optuna.exceptions.TrialPruned()
@@ -75,6 +79,7 @@ if __name__ == '__main__':
     # settings
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_trials', type=int, default=200)
+    parser.add_argument('--epochs', type=int, default=200)
     parser.add_argument('--dataset', type=str, default='Cora') # dataset: Cora, PubMed, CiteSeer
     parser.add_argument('--model', type=str, default='appnp') # model: appnp, splineconv
     parser.add_argument('--split', type=str, default='public') # dataset split: public, random, full, geom-gcn
@@ -90,7 +95,7 @@ if __name__ == '__main__':
 
     data = dataset[0].to(device)
     
-    study_name = args.dataset + '_' + args.model + '_study'
+    study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     storage_name = f'sqlite:///{study_name}.db'
 
     study = optuna.create_study(study_name = study_name,
@@ -110,7 +115,7 @@ if __name__ == '__main__':
     print('  Number of complete trials: ', len(complete_trials))
 
     print(f'Model name: {args.model}')
-    print(f'Dataset name: {args.dataset}')
+    print(f'Dataset name: {args.dataset}({args.split})')
     print('Best trial:')
     trial = study.best_trial
     print('  Value: ', trial.value)
