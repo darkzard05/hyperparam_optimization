@@ -80,10 +80,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_trials', type=int, default=200)
     parser.add_argument('--epochs', type=int, default=200)
-    parser.add_argument('--dataset', type=str, default='Cora') # dataset: Cora, PubMed, CiteSeer
-    parser.add_argument('--model', type=str, default='appnp') # model: appnp, splineconv
+    parser.add_argument('--dataset', type=str) # dataset: Cora, PubMed, CiteSeer
+    parser.add_argument('--model', type=str) # model: appnp, splineconv, gat
     parser.add_argument('--split', type=str, default='public') # dataset split: public, random, full, geom-gcn
     args = parser.parse_args()
+    
+    torch.cuda.empty_cache()
     
     dataset = Planetoid(root='/data/'+args.dataset,
                         name=args.dataset,
@@ -122,8 +124,10 @@ if __name__ == '__main__':
     print('  Parameters: ')
     for key, value in trial.params.items():
         print(f"    {key}: {value}")
-        
+    
     plot_param_importances(study).show()
     plot_optimization_history(study).show()
     plot_intermediate_values(study).show()
+    plot_parallel_coordinate(study).show()
+    plot_contour(study).show()
     plot_slice(study).show()
