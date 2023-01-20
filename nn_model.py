@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import Linear, APPNP, SplineConv, GATConv
 
@@ -25,7 +24,7 @@ class appnp(torch.nn.Module):
         x = self.lin(x).relu()
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.prop(x, edge_index)
-        return x
+        return F.log_softmax(x, dim=1)
 
 class splineconv(torch.nn.Module):
     def __init__(self, dataset, trial):
@@ -34,7 +33,7 @@ class splineconv(torch.nn.Module):
         self.out_features = dataset.num_classes
         
         self.dropout = trial.suggest_float('dropout', 0.0, 0.7)
-        self.n_units = trial.suggest_categorical('n_units', [4, 8, 16, 32, 64, 128, 256, 512])
+        self.n_units = trial.suggest_categorical('n_units', [2 ** i for i in range(2, 10)])
         
         self.conv_1 = SplineConv(self.in_features, self.n_units, dim=1, kernel_size=2)
         self.conv_2 = SplineConv(self.n_units, self.out_features, dim=1, kernel_size=2)
@@ -58,8 +57,8 @@ class gat(torch.nn.Module):
         self.out_features = dataset.num_classes
         
         self.dropout = trial.suggest_float('dropout', 0.0, 0.7)
-        self.n_units = trial.suggest_categorical('n_units', [4, 8, 16, 32, 64])
-        self.heads = trial.suggest_int('heads', 1, 10)
+        self.n_units = trial.suggest_categorical('n_units', [2**i for i in range(2, 8)])
+        self.heads = trial.suggest_int('heads', 1, 8)
         
         self.conv_1 = GATConv(self.in_features, self.n_units, heads=self.heads,
                               dropout=self.dropout)
