@@ -78,34 +78,34 @@ def objective(trial):
 if __name__ == '__main__':
     # settings
     parser = argparse.ArgumentParser()
-    parser.add_argument('--n_trials', type=int, default=200)
-    parser.add_argument('--epochs', type=int, default=200)
-    parser.add_argument('--dataset', type=str) # dataset: Cora, PubMed, CiteSeer
-    parser.add_argument('--model', type=str) # model: appnp, splineconv, gat
-    parser.add_argument('--split', type=str, default='public') # dataset split: public, random, full, geom-gcn
+    parser.add_argument('--n_trials', type=int, default=200, help='number of trials')
+    parser.add_argument('--epochs', type=int, default=200, help='epochs per trial')
+    parser.add_argument('--dataset', type=str,
+                        help='one of dataset Cora, PubMed, CiteSeer') # dataset: Cora, PubMed, CiteSeer
+    parser.add_argument('--model', type=str,
+                        help='one of model appnp, splineconv, gat') # model: appnp, splineconv, gat
+    parser.add_argument('--split', type=str, default='public',
+                        help='one of dataset split type public, random, full, geom-gcn') # dataset split: public, random, full, geom-gcn
     args = parser.parse_args()
-    
-    torch.cuda.empty_cache()
     
     dataset = Planetoid(root='/data/'+args.dataset,
                         name=args.dataset,
                         split=args.split,
-                        transform=T.TargetIndegree()
-                        )
+                        transform=T.TargetIndegree())
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     data = dataset[0].to(device)
     
-    study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
-    storage_name = f'sqlite:///{study_name}.db'
+    # study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
+    # storage_name = f'sqlite:///{study_name}.db'
 
-    study = optuna.create_study(study_name = study_name,
-                                storage = storage_name,
-                                load_if_exists= True,
+    study = optuna.create_study(storage=None,
                                 sampler=TPESampler(),
                                 pruner=HyperbandPruner(),
-                                direction='maximize')
+                                study_name=None,                                
+                                direction='maximize',
+                                load_if_exists=False)
     study.optimize(objective, n_trials=args.n_trials)
 
     pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
