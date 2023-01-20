@@ -5,10 +5,10 @@
 |learning rate|1e-5|1e-1|
 |weight decay|1e-5|1e-1|
 |eps|1e-10|1e-6|
-|dropout|0.0|1.0|
-|number of units|4|1024|
+|dropout|0.0|0.7|
+|number of units|4|512|
 |K|5|200|
-|alpha|0|0.5|
+|alpha|0.05|0.2|
 
 - Dataset
 ```
@@ -17,7 +17,7 @@ Cora, PubMed, CiteSeer
 
 - Model
 ```
-APPNP, SplineConv
+APPNP, SplineConv, GAT
 ```
 
 - Requirements
@@ -31,14 +31,11 @@ torch_geometric 2.0.5
 ```
 python main.py --dataset=Cora --model=appnp
 python main.py --dataset=Cora --model=splineconv
+python main.py --dataset=Cora --model=gat
 python main.py --dataset=PubMed --model=appnp
 python main.py --dataset=PubMed --model=splineconv
+python main.py --dataset=PubMed --model=gat
 python main.py --dataset=CiteSeer --model=appnp
 python main.py --dataset=CiteSeer --model=splineconv
-```
-- best accuracy
-```
-Cora: 0.85
-PubMed: 0.8
-CiteSeer: 0.73
+python main.py --dataset=CiteSeer --model=gat
 ```
