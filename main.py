@@ -21,7 +21,7 @@ def train(data, model, optimizer):
     loss = nn.CrossEntropyLoss()(output, target)
     loss.backward()
     optimizer.step()
-    return loss
+    return float(loss)
 
 def test(data, model, mask):
     model.eval()
@@ -36,26 +36,38 @@ def test(data, model, mask):
 def objective(trial):
     lr = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
-    eps = trial.suggest_float('eps', 1e-10, 1e-6, log=True)
-    # optim_name = trial.suggest_categorical('optimizer',
-    #                                        ['Adam', 'NAdam', 'AdamW', 'RAdam'])
+    # eps = trial.suggest_float('eps', 1e-10, 1e-6, log=True)
+    
+    dropout = trial.suggest_float('dropout', 0.0, 0.7)
+    K = trial.suggest_int('K', 5, 200)
+    alpha = trial.suggest_float('alpha', 0.05, 0.2)
+    kernel_size = trial.suggest_int('kernel_size', 1, 8)
+    n_units = trial.suggest_categorical('n_units',
+                                        [2**i for i in range(2, 8)])
+    heads = trial.suggest_int('heads', 1, 8)
+    
+    kwargs = {'dropout': dropout}
+    if args.model == 'appnp':
+        kwargs.update({'K': K, 'alpha': alpha})
+        model = getattr(nn_model, args.model)(dataset, **kwargs)
+    elif args.model == 'splineconv':
+        kwargs.update({'kernel_size': kernel_size, 'n_units': n_units})
+        model = getattr(nn_model, args.model)(dataset, **kwargs)
+    elif args.model == 'gat':
+        kwargs.update({'n_units': n_units, 'heads': heads})
+        model = getattr(nn_model, args.model)(dataset, **kwargs)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = getattr(nn_model, args.model)(dataset, trial)
     model.to(device)
     
-    # optimizer = getattr(optim, optim_name)(model.parameters(),
-    #                                        lr=lr,
-    #                                        eps=eps,
-    #                                        weight_decay=weight_decay)
-    optimizer = optim.Adam(model.parameters(),
-                           lr=lr,
-                           eps=eps,
-                           weight_decay=weight_decay)
+    optim_name = trial.suggest_categorical('optimizer',
+                                           ['Adam', 'NAdam', 'AdamW', 'RAdam'])
+    optimizer = getattr(optim, optim_name)(model.parameters(),
+                                           lr=lr,
+                                           weight_decay=weight_decay)
     model.reset_parameters()
     
-    best_val_acc = 0
-    best_test_acc = 0
+    best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(1, args.epochs+1):
         loss = train(data, model, optimizer)
@@ -94,7 +106,6 @@ if __name__ == '__main__':
                         transform=T.TargetIndegree())
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
     data = dataset[0].to(device)
     
     # study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'

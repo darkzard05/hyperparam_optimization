@@ -3,16 +3,13 @@ import torch.nn.functional as F
 from torch_geometric.nn import Linear, APPNP, SplineConv, GATConv
 
 class appnp(torch.nn.Module):
-    def __init__(self, dataset, trial):
+    def __init__(self, dataset, K, alpha, dropout):
         super().__init__()
-        self.in_features = dataset[0].num_features
-        self.out_features = dataset.num_classes
+        self.K = K
+        self.alpha = alpha
+        self.dropout = dropout
         
-        self.K = trial.suggest_int('K', 5, 200)
-        self.alpha = trial.suggest_float('alpha', 0.05, 0.2)
-        self.dropout = trial.suggest_float('dropout', 0.0, 0.7)
-        
-        self.lin = Linear(self.in_features, self.out_features)
+        self.lin = Linear(dataset[0].num_features, dataset.num_classes)
         self.prop = APPNP(K=self.K, alpha=self.alpha)
         
     def reset_parameters(self):
@@ -27,16 +24,15 @@ class appnp(torch.nn.Module):
         return F.log_softmax(x, dim=1)
 
 class splineconv(torch.nn.Module):
-    def __init__(self, dataset, trial):
+    def __init__(self, dataset, kernel_size, n_units, dropout):
         super().__init__()
-        self.in_features = dataset[0].num_features
-        self.out_features = dataset.num_classes
+        self.n_units = n_units
+        self.dropout = dropout
         
-        self.dropout = trial.suggest_float('dropout', 0.0, 0.7)
-        self.n_units = trial.suggest_categorical('n_units', [2 ** i for i in range(2, 10)])
-        
-        self.conv_1 = SplineConv(self.in_features, self.n_units, dim=1, kernel_size=2)
-        self.conv_2 = SplineConv(self.n_units, self.out_features, dim=1, kernel_size=2)
+        self.conv_1 = SplineConv(-1, self.n_units,
+                                 dim=1, kernel_size=kernel_size)
+        self.conv_2 = SplineConv(self.n_units, dataset.num_classes,
+                                 dim=1, kernel_size=kernel_size)
         
     def reset_parameters(self):
         self.conv_1.reset_parameters()
@@ -51,18 +47,15 @@ class splineconv(torch.nn.Module):
         return F.log_softmax(x, dim=1)
     
 class gat(torch.nn.Module):
-    def __init__(self, dataset, trial):
+    def __init__(self, dataset, n_units, heads, dropout):
         super().__init__()
-        self.in_features = dataset[0].num_features
-        self.out_features = dataset.num_classes
+        self.dropout = dropout
+        self.n_units = n_units
+        self.heads = heads
         
-        self.dropout = trial.suggest_float('dropout', 0.0, 0.7)
-        self.n_units = trial.suggest_categorical('n_units', [2**i for i in range(2, 8)])
-        self.heads = trial.suggest_int('heads', 1, 8)
-        
-        self.conv_1 = GATConv(self.in_features, self.n_units, heads=self.heads,
+        self.conv_1 = GATConv(-1, self.n_units, heads=self.heads,
                               dropout=self.dropout)
-        self.conv_2 = GATConv(self.n_units * self.heads, self.out_features,
+        self.conv_2 = GATConv(self.n_units * self.heads, dataset.num_classes,
                               dropout=self.dropout)
         
     def reset_parameters(self):
