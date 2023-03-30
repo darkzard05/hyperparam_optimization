@@ -14,19 +14,19 @@ from optuna.trial import TrialState
 
 import nn_model
 
-def train(data, model, optimizer):
+def train(model, optimizer):
     model.train()
     optimizer.zero_grad()
-    output, target = model(data)[data.train_mask], data.y[data.train_mask]
+    output, target = model(x, edge_index, edge_attr)[data.train_mask], data.y[data.train_mask]
     loss = nn.CrossEntropyLoss()(output, target)
     loss.backward()
     optimizer.step()
     return float(loss)
 
-def test(data, model, mask):
+def test(model, mask):
     model.eval()
     with torch.no_grad():
-        output = model(data)
+        output = model(x, edge_index, edge_attr)
         target = data.y
         pred = output.argmax(dim=1)
         correct = pred[mask] == target[mask]
@@ -37,25 +37,25 @@ def objective(trial):
     lr = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
     # eps = trial.suggest_float('eps', 1e-10, 1e-6, log=True)
-    
     dropout = trial.suggest_float('dropout', 0.0, 0.7)
-    K = trial.suggest_int('K', 5, 200)
-    alpha = trial.suggest_float('alpha', 0.05, 0.2)
-    kernel_size = trial.suggest_int('kernel_size', 1, 8)
-    n_units = trial.suggest_categorical('n_units',
-                                        [2**i for i in range(2, 8)])
-    heads = trial.suggest_int('heads', 1, 8)
-    
-    kwargs = {'dropout': dropout}
+    kwargs = {'in_channels': data.num_features,
+              'out_channels': dataset.num_classes,
+              'dropout': dropout}
     if args.model == 'appnp':
+        K = trial.suggest_int('K', 5, 200)
+        alpha = trial.suggest_float('alpha', 0.05, 0.2)
         kwargs.update({'K': K, 'alpha': alpha})
-        model = getattr(nn_model, args.model)(dataset, **kwargs)
+        model = getattr(nn_model, args.model)(**kwargs)
     elif args.model == 'splineconv':
+        kernel_size = trial.suggest_int('kernel_size', 1, 8)
+        n_units = trial.suggest_categorical('n_units', [2**i for i in range(2, 8)])
         kwargs.update({'kernel_size': kernel_size, 'n_units': n_units})
-        model = getattr(nn_model, args.model)(dataset, **kwargs)
+        model = getattr(nn_model, args.model)(**kwargs)
     elif args.model == 'gat':
+        heads = trial.suggest_int('heads', 1, 8)
+        n_units = trial.suggest_categorical('n_units', [2**i for i in range(2, 8)])
         kwargs.update({'n_units': n_units, 'heads': heads})
-        model = getattr(nn_model, args.model)(dataset, **kwargs)
+        model = getattr(nn_model, args.model)(**kwargs)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
@@ -70,10 +70,10 @@ def objective(trial):
     best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(1, args.epochs+1):
-        loss = train(data, model, optimizer)
-        train_acc = test(data, model, data.train_mask)
-        val_acc = test(data, model, data.val_mask)
-        test_acc = test(data, model, data.test_mask)
+        loss = train(model, optimizer)
+        train_acc = test(model, data.train_mask)
+        val_acc = test(model, data.val_mask)
+        test_acc = test(model, data.test_mask)
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
@@ -90,8 +90,8 @@ def objective(trial):
 if __name__ == '__main__':
     # settings
     parser = argparse.ArgumentParser()
-    parser.add_argument('--n_trials', type=int, default=200, help='number of trials')
-    parser.add_argument('--epochs', type=int, default=200, help='epochs per trial')
+    parser.add_argument('--n_trials', type=int, default=100, help='number of trials')
+    parser.add_argument('--epochs', type=int, default=100, help='epochs per trial')
     parser.add_argument('--dataset', type=str,
                         help='one of dataset Cora, PubMed, CiteSeer') # dataset: Cora, PubMed, CiteSeer
     parser.add_argument('--model', type=str,
@@ -107,6 +107,7 @@ if __name__ == '__main__':
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0].to(device)
+    x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
     
     # study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     # storage_name = f'sqlite:///{study_name}.db'
