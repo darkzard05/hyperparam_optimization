@@ -1,6 +1,8 @@
 # Node Classification of Hyperparameter optimization with [optuna](https://optuna.org/)
 
-|HyperParameters|min|max|
+- Hyperparameter ranges
+
+|Hyperparameter|min|max|
 |-----|---|---|
 |learning rate|1e-5|1e-1|
 |weight decay|1e-5|1e-1|
@@ -10,9 +12,10 @@
 |K|5|200|
 |alpha|0.05|0.2|
 
-- Dataset
+- Dataset(split type)
 ```
 Cora, PubMed, CiteSeer
+(public, random, full, geom-gcn)
 ```
 
 - Model
@@ -38,4 +41,7 @@ python main.py --dataset=PubMed --model=gat
 python main.py --dataset=CiteSeer --model=appnp
 python main.py --dataset=CiteSeer --model=splineconv
 python main.py --dataset=CiteSeer --model=gat
+
+$ pip install optuna-dashboard
+$ optuna-dashboard sqlite://db.sqlite
 ```

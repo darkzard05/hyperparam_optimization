@@ -109,15 +109,15 @@ if __name__ == '__main__':
     data = dataset[0].to(device)
     x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
     
-    # study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
-    # storage_name = f'sqlite:///{study_name}.db'
+    study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
+    storage_name = f'sqlite:///db.sqlite'
 
-    study = optuna.create_study(storage=None,
+    study = optuna.create_study(storage=storage_name,
                                 sampler=TPESampler(),
                                 pruner=HyperbandPruner(),
-                                study_name=None,                                
+                                study_name=study_name,                                
                                 direction='maximize',
-                                load_if_exists=False)
+                                load_if_exists=True)
     study.optimize(objective, n_trials=args.n_trials)
 
     pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
@@ -129,17 +129,20 @@ if __name__ == '__main__':
     print('  Number of complete trials: ', len(complete_trials))
 
     print(f'Model name: {args.model}')
-    print(f'Dataset name: {args.dataset}({args.split})')
+    print(f'Dataset name(split type): {args.dataset}({args.split})')
     print('Best trial:')
     trial = study.best_trial
     print('  Value: ', trial.value)
     print('  Parameters: ')
     for key, value in trial.params.items():
-        print(f"    {key}: {value}")
+        if type(value) == float:
+            print(f"    {key}: {value:.4f}")
+        else:
+            print(f"    {key}: {value}")
     
-    plot_param_importances(study).show()
-    plot_optimization_history(study).show()
-    plot_intermediate_values(study).show()
-    plot_parallel_coordinate(study).show()
-    plot_contour(study).show()
-    plot_slice(study).show()
+    # plot_param_importances(study).show()
+    # plot_optimization_history(study).show()
+    # plot_intermediate_values(study).show()
+    # plot_parallel_coordinate(study).show()
+    # plot_contour(study).show()
+    # plot_slice(study).show()
