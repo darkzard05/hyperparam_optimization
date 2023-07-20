@@ -43,5 +43,5 @@ python main.py --dataset=CiteSeer --model=splineconv
 python main.py --dataset=CiteSeer --model=gat
 
 $ pip install optuna-dashboard
-$ optuna-dashboard sqlite://db.sqlite
+$ optuna-dashboard sqlite://planetoid-study.db
 ```

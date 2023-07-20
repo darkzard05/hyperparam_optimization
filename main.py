@@ -110,7 +110,7 @@ if __name__ == '__main__':
     x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
     
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
-    storage_name = f'sqlite:///db.sqlite'
+    storage_name = f'sqlite:///planetoid-study.db'
 
     study = optuna.create_study(storage=storage_name,
                                 sampler=TPESampler(),
