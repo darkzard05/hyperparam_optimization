@@ -1,5 +1,9 @@
 import argparse
 
+import os
+import json
+import datetime
+
 import torch
 import torch.nn as nn
 from torch import optim
@@ -14,7 +18,22 @@ from optuna.trial import TrialState
 
 import nn_model
 
-def train(model, optimizer):
+
+MODEL_PARAMS = {
+    'APPNP': ['K', 'alpha'],
+    'Splineconv': ['kernel_size', 'n_units'],
+    'GAT': ['n_units', 'heads']
+    }
+
+PARAMS_TYPES = {
+    'K': ('int', [5, 2e+2]),
+    'alpha': ('float', [5e-2, 2e-1]),
+    'kernel_size': ('int', [1, 8]),
+    'n_units': ('categorical', [2** i for i in range(2, 8)]),
+    'heads': ('int', [1, 8])
+}
+
+def train(data, model, optimizer, x, edge_index, edge_attr):
     model.train()
     optimizer.zero_grad()
     output, target = model(x, edge_index, edge_attr)[data.train_mask], data.y[data.train_mask]
@@ -23,7 +42,7 @@ def train(model, optimizer):
     optimizer.step()
     return float(loss)
 
-def test(model, mask):
+def test(data, model, mask, x, edge_index, edge_attr):
     model.eval()
     with torch.no_grad():
         output = model(x, edge_index, edge_attr)
@@ -32,30 +51,35 @@ def test(model, mask):
         correct = pred[mask] == target[mask]
         accuracy = int(correct.sum()) / int(mask.sum())
     return accuracy
+
+def evaluate(data, model, x, edge_index, edge_attr):
+    masks = {'train': data.train_mask, 'val': data.val_mask, 'test': data.test_mask}
+    results = {}
+    for key, mask in masks.items():
+        results[key] = test(data, model, mask, x, edge_index, edge_attr)
+    return results['train'], results['val'], results['test']
         
 def objective(trial):
     lr = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
     # eps = trial.suggest_float('eps', 1e-10, 1e-6, log=True)
     dropout = trial.suggest_float('dropout', 0.0, 0.7)
+    activation = trial.suggest_categorical('activation', ['relu', 'leakyrelu', 'elu'])
     kwargs = {'in_channels': data.num_features,
               'out_channels': dataset.num_classes,
-              'dropout': dropout}
-    if args.model == 'appnp':
-        K = trial.suggest_int('K', 5, 200)
-        alpha = trial.suggest_float('alpha', 0.05, 0.2)
-        kwargs.update({'K': K, 'alpha': alpha})
-        model = getattr(nn_model, args.model)(**kwargs)
-    elif args.model == 'splineconv':
-        kernel_size = trial.suggest_int('kernel_size', 1, 8)
-        n_units = trial.suggest_categorical('n_units', [2**i for i in range(2, 8)])
-        kwargs.update({'kernel_size': kernel_size, 'n_units': n_units})
-        model = getattr(nn_model, args.model)(**kwargs)
-    elif args.model == 'gat':
-        heads = trial.suggest_int('heads', 1, 8)
-        n_units = trial.suggest_categorical('n_units', [2**i for i in range(2, 8)])
-        kwargs.update({'n_units': n_units, 'heads': heads})
-        model = getattr(nn_model, args.model)(**kwargs)
+              'dropout': dropout,
+              'activation': activation}
+
+    if args.model in MODEL_PARAMS:
+        for param in MODEL_PARAMS[args.model]:
+            if PARAMS_TYPES[param][0] == 'categorical':
+                suggest = getattr(trial, 'suggest_categorical')(param, PARAMS_TYPES[param][1])
+            else:
+                suggest = getattr(trial, 'suggest_'+PARAMS_TYPES[param][0])(param, PARAMS_TYPES[param][1][0], PARAMS_TYPES[param][1][1])
+            kwargs.update({param: suggest})
+        model = getattr(nn_model, args.model+'Model')(**kwargs)
+    else:
+        raise ValueError(f'{args.model} is not supported. APPNP, Splineconv, GAT is supported')
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
@@ -70,10 +94,8 @@ def objective(trial):
     best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(1, args.epochs+1):
-        loss = train(model, optimizer)
-        train_acc = test(model, data.train_mask)
-        val_acc = test(model, data.val_mask)
-        test_acc = test(model, data.test_mask)
+        loss = train(data, model, optimizer, x, edge_index, edge_attr)
+        train_acc, val_acc, test_acc = evaluate(data, model, x, edge_index, edge_attr)
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
@@ -86,6 +108,36 @@ def objective(trial):
             raise optuna.exceptions.TrialPruned()
     
     return best_test_acc
+
+def save_best_results(study, args):
+    best_trial = study.best_trial
+    
+    result = {
+        'date_time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'model_name': args.model,
+        'dataset_name': args.dataset,
+        'dataset_split_type': args.split,
+        'best_trials': {
+            'params': best_trial.params,
+            'value': best_trial.value,
+            'number': best_trial.number
+            }
+        }
+    
+    filename = f'best_trial_{args.model}_{args.split}_{args.dataset}.json'
+    
+    if os.path.exists(filename):
+        with open(filename, 'r') as f:
+            data = json.load(f)
+            if not isinstance(data, list):
+                data = [data]
+            data.append(result)
+        with open(filename, 'w') as f:
+            json.dump(data, f)
+    else:
+        with open(filename, 'w') as f:
+            json.dump(result, f)
+        
     
 if __name__ == '__main__':
     # settings
@@ -95,7 +147,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str,
                         help='one of dataset Cora, PubMed, CiteSeer') # dataset: Cora, PubMed, CiteSeer
     parser.add_argument('--model', type=str,
-                        help='one of model appnp, splineconv, gat') # model: appnp, splineconv, gat
+                        help='one of model APPNP, Splineconv, GAT') # model: APPNP, Splineconv, GAT
     parser.add_argument('--split', type=str, default='public',
                         help='one of dataset split type public, random, full, geom-gcn') # dataset split: public, random, full, geom-gcn
     args = parser.parse_args()
@@ -110,7 +162,7 @@ if __name__ == '__main__':
     x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
     
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
-    storage_name = f'sqlite:///planetoid-study.db'
+    storage_name = 'sqlite:///planetoid-study.db'
 
     study = optuna.create_study(storage=storage_name,
                                 sampler=TPESampler(),
@@ -124,25 +176,21 @@ if __name__ == '__main__':
     complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
     print('Study statistics: ')
-    print('  Number of finished trials: ', len(study.trials))
-    print('  Number of pruned trials: ', len(pruned_trials))
-    print('  Number of complete trials: ', len(complete_trials))
+    print(f'  Number of finished trials: {len(study.trials)}')
+    print(f'  Number of pruned trials: {len(pruned_trials)}')
+    print(f'  Number of complete trials: {len(complete_trials)}')
 
     print(f'Model name: {args.model}')
     print(f'Dataset name(split type): {args.dataset}({args.split})')
     print('Best trial:')
+    
     trial = study.best_trial
-    print('  Value: ', trial.value)
+    save_best_results(study, args)
+    
+    print(f'  Value: {trial.value}')
     print('  Parameters: ')
     for key, value in trial.params.items():
         if type(value) == float:
             print(f"    {key}: {value:.4f}")
         else:
             print(f"    {key}: {value}")
-    
-    # plot_param_importances(study).show()
-    # plot_optimization_history(study).show()
-    # plot_intermediate_values(study).show()
-    # plot_parallel_coordinate(study).show()
-    # plot_contour(study).show()
-    # plot_slice(study).show()
