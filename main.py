@@ -11,7 +11,6 @@ from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
 
 import optuna
-from optuna.visualization import *
 from optuna.samplers import TPESampler
 from optuna.pruners import HyperbandPruner
 from optuna.trial import TrialState
@@ -33,7 +32,8 @@ PARAMS_TYPES = {
     'heads': ('int', [1, 8])
 }
 
-def train(data, model, optimizer, x, edge_index, edge_attr):
+def train(data, model, optimizer):
+    x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
     model.train()
     optimizer.zero_grad()
     output, target = model(x, edge_index, edge_attr)[data.train_mask], data.y[data.train_mask]
@@ -42,24 +42,26 @@ def train(data, model, optimizer, x, edge_index, edge_attr):
     optimizer.step()
     return float(loss)
 
-def test(data, model, mask, x, edge_index, edge_attr):
+def test(data, model, mask):
+    x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
     model.eval()
     with torch.no_grad():
         output = model(x, edge_index, edge_attr)
         target = data.y
         pred = output.argmax(dim=1)
         correct = pred[mask] == target[mask]
-        accuracy = int(correct.sum()) / int(mask.sum())
-    return accuracy
+        accuracy = correct.sum() / mask.sum()
+    return float(accuracy)
 
-def evaluate(data, model, x, edge_index, edge_attr):
+def evaluate(data, model):
+    x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
     masks = {'train': data.train_mask, 'val': data.val_mask, 'test': data.test_mask}
     results = {}
     for key, mask in masks.items():
-        results[key] = test(data, model, mask, x, edge_index, edge_attr)
+        results[key] = test(data, model, mask)
     return results['train'], results['val'], results['test']
         
-def objective(trial):
+def objective(trial, data, dataset):
     lr = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
     # eps = trial.suggest_float('eps', 1e-10, 1e-6, log=True)
@@ -94,8 +96,8 @@ def objective(trial):
     best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(1, args.epochs+1):
-        loss = train(data, model, optimizer, x, edge_index, edge_attr)
-        train_acc, val_acc, test_acc = evaluate(data, model, x, edge_index, edge_attr)
+        loss = train(data, model, optimizer)
+        train_acc, val_acc, test_acc = evaluate(data, model)
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
@@ -159,7 +161,7 @@ if __name__ == '__main__':
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0].to(device)
-    x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+    # x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
     
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
@@ -170,7 +172,7 @@ if __name__ == '__main__':
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
-    study.optimize(objective, n_trials=args.n_trials)
+    study.optimize(lambda trial: objective(trial, data, dataset), n_trials=args.n_trials)
 
     pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
