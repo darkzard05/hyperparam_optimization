@@ -24,7 +24,7 @@ class APPNPModel(torch.nn.Module):
         self.K = K
         self.alpha = alpha
         self.dropout = dropout
-        self.activation = ACTIVATION_FUNCTIONS[activation]
+        self.activation = ACTIVATION_FUNCTIONS[activation]()
         self.lin = Linear(in_channels, out_channels)
         self.prop = APPNP(K=self.K, alpha=self.alpha)
         
@@ -33,12 +33,11 @@ class APPNPModel(torch.nn.Module):
         
     def forward(self,
                 x: Tensor, edge_index: Adj, edge_attr : OptTensor = None) -> Tensor:
-        x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.lin(x)
-        x = self.activation()(x)
+        x = self.activation(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.prop(x, edge_index)
-        return F.log_softmax(x, dim=1)
+        return x
 
 
 class SplineconvModel(torch.nn.Module):
@@ -50,13 +49,14 @@ class SplineconvModel(torch.nn.Module):
                  activation: str = 'relu',
                  **kwargs):
         super().__init__(**kwargs)
+        self.kernel_size = kernel_size
         self.n_units = n_units
         self.dropout = dropout
-        self.activation = ACTIVATION_FUNCTIONS[activation]
+        self.activation = ACTIVATION_FUNCTIONS[activation]()
         self.conv_1 = SplineConv(in_channels, self.n_units,
-                                 dim=1, kernel_size=kernel_size)
+                                 dim=1, kernel_size=self.kernel_size)
         self.conv_2 = SplineConv(self.n_units, out_channels,
-                                 dim=1, kernel_size=kernel_size)
+                                 dim=1, kernel_size=self.kernel_size)
         
     def reset_parameters(self):
         self.conv_1.reset_parameters()
@@ -64,12 +64,11 @@ class SplineconvModel(torch.nn.Module):
         
     def forward(self,
                 x: Tensor, edge_index: Adj, edge_attr : OptTensor = None) -> Tensor:
-        x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.conv_1(x, edge_index, edge_attr)
-        x = self.activation()(x)
+        x = self.activation(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.conv_2(x, edge_index, edge_attr)
-        return F.log_softmax(x, dim=1)
+        return x
 
     
 class GATModel(torch.nn.Module):
@@ -84,7 +83,7 @@ class GATModel(torch.nn.Module):
         self.n_units = n_units
         self.heads = heads
         self.dropout = dropout
-        self.activation = ACTIVATION_FUNCTIONS[activation]
+        self.activation = ACTIVATION_FUNCTIONS[activation]()
         self.conv_1 = GATConv(in_channels, self.n_units, heads=self.heads,
                               dropout=self.dropout)
         self.conv_2 = GATConv(self.n_units * self.heads, out_channels,
@@ -96,9 +95,8 @@ class GATModel(torch.nn.Module):
         
     def forward(self,
                 x: Tensor, edge_index: Adj, edge_attr : OptTensor = None) -> Tensor:
-        x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.conv_1(x, edge_index, edge_attr)
-        x = self.activation()(x)
+        x = self.activation(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.conv_2(x, edge_index, edge_attr)
-        return F.log_softmax(x, dim=1)
+        return x
