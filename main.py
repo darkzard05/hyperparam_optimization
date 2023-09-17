@@ -64,7 +64,6 @@ def evaluate(data, model):
 def objective(trial, data, dataset):
     lr = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
-    # eps = trial.suggest_float('eps', 1e-10, 1e-6, log=True)
     dropout = trial.suggest_float('dropout', 0.0, 0.7)
     activation = trial.suggest_categorical('activation', ['relu', 'leakyrelu', 'elu'])
     kwargs = {'in_channels': data.num_features,
@@ -102,7 +101,7 @@ def objective(trial, data, dataset):
         if best_val_acc < val_acc:
             best_val_acc = val_acc
             best_test_acc = test_acc
-            print(f'epoch: {epoch}, loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc}, test_acc: {test_acc}')
+            print(f'epoch: {epoch}, loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}')
             
         trial.report(val_acc, epoch)
         
@@ -128,17 +127,8 @@ def save_best_results(study, args):
     
     filename = f'best_trial_{args.model}_{args.split}_{args.dataset}.json'
     
-    if os.path.exists(filename):
-        with open(filename, 'r') as f:
-            data = json.load(f)
-            if not isinstance(data, list):
-                data = [data]
-            data.append(result)
-        with open(filename, 'w') as f:
-            json.dump(data, f)
-    else:
-        with open(filename, 'w') as f:
-            json.dump(result, f)
+    with open(filename, 'w') as f:
+        json.dump(result, f)
         
     
 if __name__ == '__main__':
@@ -161,7 +151,6 @@ if __name__ == '__main__':
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0].to(device)
-    # x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
     
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
