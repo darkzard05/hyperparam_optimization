@@ -97,6 +97,5 @@ class GATModel(torch.nn.Module):
                 x: Tensor, edge_index: Adj, edge_attr : OptTensor = None) -> Tensor:
         x = self.conv_1(x, edge_index, edge_attr)
         x = self.activation(x)
-        x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.conv_2(x, edge_index, edge_attr)
         return x
