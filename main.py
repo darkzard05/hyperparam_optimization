@@ -19,9 +19,9 @@ import nn_model
 
 
 MODEL_PARAMS = {
-    'APPNP': ['K', 'alpha'],
-    'Splineconv': ['kernel_size', 'n_units'],
-    'GAT': ['n_units', 'heads']
+    'APPNP': {'K', 'alpha'},
+    'Splineconv': {'kernel_size', 'n_units'},
+    'GAT': {'n_units', 'heads'}
     }
 
 PARAMS_TYPES = {
@@ -54,14 +54,11 @@ def test(data, model, mask):
     return float(accuracy)
 
 def evaluate(data, model):
-    x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
     masks = {'train': data.train_mask, 'val': data.val_mask, 'test': data.test_mask}
-    results = {}
-    for key, mask in masks.items():
-        results[key] = test(data, model, mask)
+    results = {key: test(data, model, mask) for key, mask in masks.items()}
     return results['train'], results['val'], results['test']
         
-def objective(trial, data, dataset):
+def objective(trial, data, dataset, args, device):
     lr = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
     dropout = trial.suggest_float('dropout', 0.0, 0.7)
@@ -80,11 +77,10 @@ def objective(trial, data, dataset):
             kwargs.update({param: suggest})
         model = getattr(nn_model, args.model+'Model')(**kwargs)
     else:
-        raise ValueError(f'{args.model} is not supported. APPNP, Splineconv, GAT is supported')
+        supported_models = ', '.join(MODEL_PARAMS.keys())
+        raise ValueError(f'{args.model} is not supported. {supported_models} are supported')
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
-    
     optim_name = trial.suggest_categorical('optimizer',
                                            ['Adam', 'NAdam', 'AdamW', 'RAdam'])
     optimizer = getattr(optim, optim_name)(model.parameters(),
@@ -110,7 +106,7 @@ def objective(trial, data, dataset):
     
     return best_test_acc
 
-def save_best_results(study, args):
+def save_best_trial_to_json(study, args):
     best_trial = study.best_trial
     
     result = {
@@ -144,7 +140,8 @@ if __name__ == '__main__':
                         help='one of dataset split type public, random, full, geom-gcn') # dataset split: public, random, full, geom-gcn
     args = parser.parse_args()
     
-    dataset = Planetoid(root='/data/'+args.dataset,
+    dataset_path = os.path.join('/data', args.dataset)
+    dataset = Planetoid(root=dataset_path,
                         name=args.dataset,
                         split=args.split,
                         transform=T.TargetIndegree())
@@ -161,7 +158,7 @@ if __name__ == '__main__':
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
-    study.optimize(lambda trial: objective(trial, data, dataset), n_trials=args.n_trials)
+    study.optimize(lambda trial: objective(trial, data, dataset, args, device), n_trials=args.n_trials)
 
     pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
@@ -176,9 +173,9 @@ if __name__ == '__main__':
     print('Best trial:')
     
     trial = study.best_trial
-    save_best_results(study, args)
+    save_best_trial_to_json(study, args)
     
-    print(f'  Value: {trial.value}')
+    print(f'  Value: {trial.value:.4f}')
     print('  Parameters: ')
     for key, value in trial.params.items():
         if type(value) == float:
