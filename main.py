@@ -1,8 +1,7 @@
-import argparse
-
 import os
 import json
 import datetime
+import argparse
 
 import torch
 import torch.nn as nn
@@ -17,6 +16,11 @@ from optuna.trial import TrialState
 
 import nn_model
 
+DATA_DEFAULT_PATH = '/data'
+
+SUPPORTED_MODELS = ['APPNP', 'Splineconv', 'GAT']
+SUPPORTED_DATASETS = ['Cora', 'PubMed', 'CiteSeer']
+SUPPORTED_SPLITS = ['public', 'random', 'full', 'geom-gcn']
 
 MODEL_PARAMS = {
     'APPNP': {'K', 'alpha'},
@@ -32,6 +36,7 @@ PARAMS_TYPES = {
     'heads': ('int', [1, 8])
 }
 
+
 def train(data, model, optimizer):
     x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
     model.train()
@@ -41,6 +46,7 @@ def train(data, model, optimizer):
     loss.backward()
     optimizer.step()
     return float(loss)
+
 
 def test(data, model, mask):
     x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
@@ -53,39 +59,57 @@ def test(data, model, mask):
         accuracy = correct.sum() / mask.sum()
     return float(accuracy)
 
+
 def evaluate(data, model):
     masks = {'train': data.train_mask, 'val': data.val_mask, 'test': data.test_mask}
     results = {key: test(data, model, mask) for key, mask in masks.items()}
     return results['train'], results['val'], results['test']
-        
-def objective(trial, data, dataset, args, device):
+
+
+def get_hyperparams_from_trial(trial):
     lr = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
     dropout = trial.suggest_float('dropout', 0.0, 0.7)
     activation = trial.suggest_categorical('activation', ['relu', 'leakyrelu', 'elu'])
-    kwargs = {'in_channels': data.num_features,
-              'out_channels': dataset.num_classes,
-              'dropout': dropout,
-              'activation': activation}
-
-    if args.model in MODEL_PARAMS:
-        for param in MODEL_PARAMS[args.model]:
-            if PARAMS_TYPES[param][0] == 'categorical':
-                suggest = getattr(trial, 'suggest_categorical')(param, PARAMS_TYPES[param][1])
-            else:
-                suggest = getattr(trial, 'suggest_'+PARAMS_TYPES[param][0])(param, PARAMS_TYPES[param][1][0], PARAMS_TYPES[param][1][1])
-            kwargs.update({param: suggest})
-        model = getattr(nn_model, args.model+'Model')(**kwargs)
-    else:
-        supported_models = ', '.join(MODEL_PARAMS.keys())
-        raise ValueError(f'{args.model} is not supported. {supported_models} are supported')
-    
-    model.to(device)
     optim_name = trial.suggest_categorical('optimizer',
                                            ['Adam', 'NAdam', 'AdamW', 'RAdam'])
-    optimizer = getattr(optim, optim_name)(model.parameters(),
-                                           lr=lr,
-                                           weight_decay=weight_decay)
+    kwargs = {
+        'lr': lr,
+        'weight_decay': weight_decay,
+        'dropout': dropout,
+        'activation': activation,
+        'optimizer': optim_name
+    }
+    return kwargs
+
+
+def intialize_model(trial, data, dataset, args):
+    model_params = get_hyperparams_from_trial(trial)
+    
+    kwargs = {
+        'in_channels': data.num_features,
+        'out_channels': dataset.num_classes,
+        'dropout': model_params['dropout'],
+        'activation': model_params['activation']
+        }
+    
+    for param in MODEL_PARAMS[args.model]:
+        if PARAMS_TYPES[param][0] == 'categorical':
+            suggest = getattr(trial, 'suggest_categorical')(param, PARAMS_TYPES[param][1])
+        else:
+            suggest = getattr(trial, 'suggest_'+PARAMS_TYPES[param][0])(param, PARAMS_TYPES[param][1][0], PARAMS_TYPES[param][1][1])
+        kwargs.update({param: suggest})
+    
+    model = getattr(nn_model, args.model+'Model')(**kwargs)
+    optimizer = getattr(optim, model_params['optimizer'])(model.parameters(),
+                                           lr=model_params['lr'],
+                                           weight_decay=model_params['weight_decay'])
+    return model, optimizer
+
+
+def objective(trial, data, dataset, args, device):
+    model, optimizer = intialize_model(trial, data, dataset, args)
+    model.to(device)
     model.reset_parameters()
     
     best_val_acc, best_test_acc = 0, 0
@@ -105,6 +129,7 @@ def objective(trial, data, dataset, args, device):
             raise optuna.exceptions.TrialPruned()
     
     return best_test_acc
+
 
 def save_best_trial_to_json(study, args):
     best_trial = study.best_trial
@@ -130,17 +155,26 @@ def save_best_trial_to_json(study, args):
 if __name__ == '__main__':
     # settings
     parser = argparse.ArgumentParser()
+    parser.add_argument('--model', type=str,
+                        help='one of model APPNP, Splineconv, GAT')
+    parser.add_argument('--dataset', type=str,
+                        help='one of dataset Cora, PubMed, CiteSeer')
+    parser.add_argument('--split', type=str, default='public',
+                        help='one of dataset split type public, random, full, geom-gcn')
     parser.add_argument('--n_trials', type=int, default=100, help='number of trials')
     parser.add_argument('--epochs', type=int, default=100, help='epochs per trial')
-    parser.add_argument('--dataset', type=str,
-                        help='one of dataset Cora, PubMed, CiteSeer') # dataset: Cora, PubMed, CiteSeer
-    parser.add_argument('--model', type=str,
-                        help='one of model APPNP, Splineconv, GAT') # model: APPNP, Splineconv, GAT
-    parser.add_argument('--split', type=str, default='public',
-                        help='one of dataset split type public, random, full, geom-gcn') # dataset split: public, random, full, geom-gcn
     args = parser.parse_args()
     
-    dataset_path = os.path.join('/data', args.dataset)
+    if args.model not in SUPPORTED_MODELS:
+        raise ValueError(f'{args.model} is not supported. {", ".join(SUPPORTED_MODELS)} are supported.')
+    
+    if args.dataset not in SUPPORTED_DATASETS:
+        raise ValueError(f'{args.dataset} is not supported. {", ".join(SUPPORTED_DATASETS)} are supported.')
+
+    if args.split not in SUPPORTED_SPLITS:
+        raise ValueError(f'{args.split} is not supported. {", ".join(SUPPORTED_SPLITS)} are supported.')
+    
+    dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
     dataset = Planetoid(root=dataset_path,
                         name=args.dataset,
                         split=args.split,
@@ -163,22 +197,19 @@ if __name__ == '__main__':
     pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
-    print('Study statistics: ')
-    print(f'  Number of finished trials: {len(study.trials)}')
-    print(f'  Number of pruned trials: {len(pruned_trials)}')
-    print(f'  Number of complete trials: {len(complete_trials)}')
-
-    print(f'Model name: {args.model}')
-    print(f'Dataset name(split type): {args.dataset}({args.split})')
-    print('Best trial:')
-    
     trial = study.best_trial
     save_best_trial_to_json(study, args)
     
-    print(f'  Value: {trial.value:.4f}')
-    print('  Parameters: ')
+    print(f'''
+    Study statistics:
+      Number of finished trials: {len(study.trials)}
+      Number of pruned trials: {len(pruned_trials)}
+      Number of complete trials: {len(complete_trials)}
+    Model name: {args.model}
+    Dataset name(split type): {args.dataset}({args.split})
+    Best trial:
+      Value: {trial.value:.4f}
+    Parameters:''')
+    
     for key, value in trial.params.items():
-        if type(value) == float:
-            print(f"    {key}: {value:.4f}")
-        else:
-            print(f"    {key}: {value}")
+        print(f'      {key}: {value:.4f}' if isinstance(value, float) else f'      {key}: {value}')
