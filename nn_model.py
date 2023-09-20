@@ -33,6 +33,7 @@ class APPNPModel(torch.nn.Module):
         
     def forward(self,
                 x: Tensor, edge_index: Adj, edge_attr : OptTensor = None) -> Tensor:
+        x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.lin(x)
         x = self.activation(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
