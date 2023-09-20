@@ -8,7 +8,6 @@ import torch.nn as nn
 from torch import optim
 from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
-
 import optuna
 from optuna.samplers import TPESampler
 from optuna.pruners import HyperbandPruner
@@ -83,7 +82,7 @@ def get_hyperparams_from_trial(trial):
     return kwargs
 
 
-def intialize_model(trial, data, dataset, args):
+def initialize_model(trial, data, dataset, args):
     model_params = get_hyperparams_from_trial(trial)
     
     kwargs = {
@@ -108,7 +107,7 @@ def intialize_model(trial, data, dataset, args):
 
 
 def objective(trial, data, dataset, args, device):
-    model, optimizer = intialize_model(trial, data, dataset, args)
+    model, optimizer = initialize_model(trial, data, dataset, args)
     model.to(device)
     model.reset_parameters()
     
@@ -150,8 +149,54 @@ def save_best_trial_to_json(study, args):
     
     with open(filename, 'w') as f:
         json.dump(result, f)
-        
+
+
+def validation_args(args):
+    if args.model not in SUPPORTED_MODELS:
+        raise ValueError(f'{args.model} is not supported. {", ".join(SUPPORTED_MODELS)} are supported.')
     
+    if args.dataset not in SUPPORTED_DATASETS:
+        raise ValueError(f'{args.dataset} is not supported. {", ".join(SUPPORTED_DATASETS)} are supported.')
+
+    if args.split not in SUPPORTED_SPLITS:
+        raise ValueError(f'{args.split} is not supported. {", ".join(SUPPORTED_SPLITS)} are supported.')
+    
+    if not isinstance(args.n_trials, int) or not isinstance(args.epochs, int):
+        
+        raise TypeError()
+
+
+def display_results(study, args):
+    pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+    
+    trial = study.best_trial
+    
+    print(f'''
+    Study statistics:
+      Number of finished trials: {len(study.trials)}
+      Number of pruned trials: {len(pruned_trials)}
+      Number of complete trials: {len(complete_trials)}
+    Model name: {args.model}
+    Dataset name(split type): {args.dataset}({args.split})
+    Best trial:
+      Value: {trial.value:.4f}
+    Parameters:''')
+    
+    for key, value in trial.params.items():
+        print(f'      {key}: {value:.4f}' if isinstance(value, float) else f'      {key}: {value}')
+
+
+def valid_positive_int(x):
+    try:
+        x = int(x)
+        if x <= 0:
+            raise ValueError
+        return x
+    except ValueError:
+        raise argparse.ArgumentTypeError(f'{x} is not a valid positive integer.')
+
+
 if __name__ == '__main__':
     # settings
     parser = argparse.ArgumentParser()
@@ -161,18 +206,11 @@ if __name__ == '__main__':
                         help='one of dataset Cora, PubMed, CiteSeer')
     parser.add_argument('--split', type=str, default='public',
                         help='one of dataset split type public, random, full, geom-gcn')
-    parser.add_argument('--n_trials', type=int, default=100, help='number of trials')
-    parser.add_argument('--epochs', type=int, default=100, help='epochs per trial')
+    parser.add_argument('--n_trials', type=valid_positive_int, default=100, help='number of trials')
+    parser.add_argument('--epochs', type=valid_positive_int, default=100, help='epochs per trial')
     args = parser.parse_args()
     
-    if args.model not in SUPPORTED_MODELS:
-        raise ValueError(f'{args.model} is not supported. {", ".join(SUPPORTED_MODELS)} are supported.')
-    
-    if args.dataset not in SUPPORTED_DATASETS:
-        raise ValueError(f'{args.dataset} is not supported. {", ".join(SUPPORTED_DATASETS)} are supported.')
-
-    if args.split not in SUPPORTED_SPLITS:
-        raise ValueError(f'{args.split} is not supported. {", ".join(SUPPORTED_SPLITS)} are supported.')
+    validation_args(args)
     
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
     dataset = Planetoid(root=dataset_path,
@@ -194,22 +232,5 @@ if __name__ == '__main__':
                                 load_if_exists=True)
     study.optimize(lambda trial: objective(trial, data, dataset, args, device), n_trials=args.n_trials)
 
-    pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
-    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
-
-    trial = study.best_trial
     save_best_trial_to_json(study, args)
-    
-    print(f'''
-    Study statistics:
-      Number of finished trials: {len(study.trials)}
-      Number of pruned trials: {len(pruned_trials)}
-      Number of complete trials: {len(complete_trials)}
-    Model name: {args.model}
-    Dataset name(split type): {args.dataset}({args.split})
-    Best trial:
-      Value: {trial.value:.4f}
-    Parameters:''')
-    
-    for key, value in trial.params.items():
-        print(f'      {key}: {value:.4f}' if isinstance(value, float) else f'      {key}: {value}')
+    display_results(study, args)
