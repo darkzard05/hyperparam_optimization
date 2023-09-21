@@ -35,9 +35,14 @@ PARAMS_TYPES = {
     'heads': ('int', [1, 8])
 }
 
+def preprocess_data(data):
+    x = (data.x - data.x.mean()) / data.x.std()
+    edge_index, edge_attr = data.edge_index, data.edge_attr
+    return x, edge_index, edge_attr
+
 
 def train(data, model, optimizer):
-    x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+    x, edge_index, edge_attr = preprocess_data(data)
     model.train()
     optimizer.zero_grad()
     output, target = model(x, edge_index, edge_attr)[data.train_mask], data.y[data.train_mask]
@@ -48,7 +53,7 @@ def train(data, model, optimizer):
 
 
 def test(data, model, mask):
-    x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+    x, edge_index, edge_attr = preprocess_data(data)
     model.eval()
     with torch.no_grad():
         output = model(x, edge_index, edge_attr)
@@ -112,6 +117,7 @@ def objective(trial, data, dataset, args, device):
     model.reset_parameters()
     
     best_val_acc, best_test_acc = 0, 0
+    LOG_INTERVAL = 10
     
     for epoch in range(1, args.epochs+1):
         loss = train(data, model, optimizer)
@@ -120,6 +126,8 @@ def objective(trial, data, dataset, args, device):
         if best_val_acc < val_acc:
             best_val_acc = val_acc
             best_test_acc = test_acc
+            
+        if epoch % LOG_INTERVAL == 0 or best_val_acc == val_acc:
             print(f'epoch: {epoch}, loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}')
             
         trial.report(val_acc, epoch)
@@ -151,7 +159,7 @@ def save_best_trial_to_json(study, args):
         json.dump(result, f)
 
 
-def validation_args(args):
+def validate_args(args):
     if args.model not in SUPPORTED_MODELS:
         raise ValueError(f'{args.model} is not supported. {", ".join(SUPPORTED_MODELS)} are supported.')
     
@@ -160,10 +168,6 @@ def validation_args(args):
 
     if args.split not in SUPPORTED_SPLITS:
         raise ValueError(f'{args.split} is not supported. {", ".join(SUPPORTED_SPLITS)} are supported.')
-    
-    if not isinstance(args.n_trials, int) or not isinstance(args.epochs, int):
-        
-        raise TypeError()
 
 
 def display_results(study, args):
@@ -210,7 +214,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=valid_positive_int, default=100, help='epochs per trial')
     args = parser.parse_args()
     
-    validation_args(args)
+    validate_args(args)
     
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
     dataset = Planetoid(root=dataset_path,
