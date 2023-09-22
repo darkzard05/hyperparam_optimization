@@ -18,15 +18,16 @@ class APPNPModel(torch.nn.Module):
                  K: int = 50,
                  alpha: float = 0.1,
                  dropout: float = 0.5,
-                 activation: str = 'relu',
-                 **kwargs):
-        super().__init__(**kwargs)
+                 activation: str = 'relu'
+                 ):
+        super().__init__()
         self.K = K
         self.alpha = alpha
         self.dropout = dropout
         self.activation = ACTIVATION_FUNCTIONS[activation]()
         self.lin = Linear(in_channels, out_channels)
         self.prop = APPNP(K=self.K, alpha=self.alpha)
+        self.reset_parameters()
         
     def reset_parameters(self):
         self.lin.reset_parameters()
@@ -47,9 +48,9 @@ class SplineconvModel(torch.nn.Module):
                  kernel_size: int = 2,
                  n_units: int = 32,
                  dropout: float = 0.5,
-                 activation: str = 'relu',
-                 **kwargs):
-        super().__init__(**kwargs)
+                 activation: str = 'relu'
+                 ):
+        super().__init__()
         self.kernel_size = kernel_size
         self.n_units = n_units
         self.dropout = dropout
@@ -58,6 +59,7 @@ class SplineconvModel(torch.nn.Module):
                                  dim=1, kernel_size=self.kernel_size)
         self.conv_2 = SplineConv(self.n_units, out_channels,
                                  dim=1, kernel_size=self.kernel_size)
+        self.reset_parameters()
         
     def reset_parameters(self):
         self.conv_1.reset_parameters()
@@ -78,9 +80,9 @@ class GATModel(torch.nn.Module):
                  n_units: int = 32,
                  heads: int = 8,
                  dropout: float = 0.5,
-                 activation: str = 'relu',
-                 **kwargs):
-        super().__init__(**kwargs)
+                 activation: str = 'relu'
+                 ):
+        super().__init__()
         self.n_units = n_units
         self.heads = heads
         self.dropout = dropout
@@ -89,6 +91,7 @@ class GATModel(torch.nn.Module):
                               dropout=self.dropout)
         self.conv_2 = GATConv(self.n_units * self.heads, out_channels,
                               dropout=self.dropout)
+        self.reset_parameters()
         
     def reset_parameters(self):
         self.conv_1.reset_parameters()
