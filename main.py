@@ -8,6 +8,7 @@ import torch.nn as nn
 from torch import optim
 from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
+
 import optuna
 from optuna.samplers import TPESampler
 from optuna.pruners import HyperbandPruner
@@ -71,7 +72,7 @@ def evaluate(data, model):
 
 
 def get_hyperparams_from_trial(trial):
-    lr = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
+    lr = trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True)
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
     dropout = trial.suggest_float('dropout', 0.0, 0.7)
     activation = trial.suggest_categorical('activation', ['relu', 'leakyrelu', 'elu'])
@@ -98,10 +99,13 @@ def initialize_model(trial, data, dataset, args):
         }
     
     for param in MODEL_PARAMS[args.model]:
-        if PARAMS_TYPES[param][0] == 'categorical':
-            suggest = getattr(trial, 'suggest_categorical')(param, PARAMS_TYPES[param][1])
-        else:
-            suggest = getattr(trial, 'suggest_'+PARAMS_TYPES[param][0])(param, PARAMS_TYPES[param][1][0], PARAMS_TYPES[param][1][1])
+        param_type, param_range = PARAMS_TYPES[param]
+        if param_type == 'categorical':
+            suggest = trial.suggest_categorical(param, param_range)
+        elif param_type == 'int':
+            suggest = trial.suggest_int(param, *param_range)
+        elif param_type == 'float':
+            suggest = trial.suggest_float(param, *param_range)
         kwargs.update({param: suggest})
     
     model = getattr(nn_model, args.model+'Model')(**kwargs)
@@ -114,7 +118,6 @@ def initialize_model(trial, data, dataset, args):
 def objective(trial, data, dataset, args, device):
     model, optimizer = initialize_model(trial, data, dataset, args)
     model.to(device)
-    model.reset_parameters()
     
     best_val_acc, best_test_acc = 0, 0
     LOG_INTERVAL = 10
@@ -161,13 +164,13 @@ def save_best_trial_to_json(study, args):
 
 def validate_args(args):
     if args.model not in SUPPORTED_MODELS:
-        raise ValueError(f'{args.model} is not supported. {", ".join(SUPPORTED_MODELS)} are supported.')
+        raise ValueError(f'Model {args.model} is not supported. Supported models: {", ".join(SUPPORTED_MODELS)}.')
     
     if args.dataset not in SUPPORTED_DATASETS:
-        raise ValueError(f'{args.dataset} is not supported. {", ".join(SUPPORTED_DATASETS)} are supported.')
+        raise ValueError(f'Dataset {args.dataset} is not supported. Supported datasets: {", ".join(SUPPORTED_DATASETS)}.')
 
     if args.split not in SUPPORTED_SPLITS:
-        raise ValueError(f'{args.split} is not supported. {", ".join(SUPPORTED_SPLITS)} are supported.')
+        raise ValueError(f'Split type {args.split} is not supported. Supported split types: {", ".join(SUPPORTED_SPLITS)}.')
 
 
 def display_results(study, args):
