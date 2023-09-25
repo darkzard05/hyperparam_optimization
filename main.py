@@ -19,21 +19,22 @@ import nn_model
 DATA_DEFAULT_PATH = '/data'
 
 SUPPORTED_MODELS = ['APPNP', 'Splineconv', 'GAT']
-SUPPORTED_DATASETS = ['Cora', 'PubMed', 'CiteSeer']
+SUPPORTED_DATASETS = ['Cora', 'PubMed', 'CiteSeer', 'Reddit']
 SUPPORTED_SPLITS = ['public', 'random', 'full', 'geom-gcn']
 
-MODEL_PARAMS = {
+EXTRA_MODEL_PARAMS = {
     'APPNP': {'K', 'alpha'},
-    'Splineconv': {'kernel_size', 'n_units'},
-    'GAT': {'n_units', 'heads'}
+    'Splineconv': {'kernel_size'},
+    'GAT': {'heads'}
     }
 
-PARAMS_TYPES = {
+EXTRA_PARAMS_TYPES = {
     'K': ('int', [5, 2e+2]),
     'alpha': ('float', [5e-2, 2e-1]),
     'kernel_size': ('int', [1, 8]),
-    'n_units': ('categorical', [2** i for i in range(2, 8)]),
     'heads': ('int', [1, 8])
+    # 'n_units': ('categorical', [2** i for i in range(2, 8)]),
+    # 'num_layers': ('int', [1, 3])
 }
 
 def preprocess_data(data):
@@ -72,46 +73,50 @@ def evaluate(data, model):
 
 
 def get_hyperparams_from_trial(trial):
-    lr = trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True)
-    weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
-    dropout = trial.suggest_float('dropout', 0.0, 0.7)
-    activation = trial.suggest_categorical('activation', ['relu', 'leakyrelu', 'elu'])
-    optim_name = trial.suggest_categorical('optimizer',
-                                           ['Adam', 'NAdam', 'AdamW', 'RAdam'])
-    kwargs = {
-        'lr': lr,
-        'weight_decay': weight_decay,
-        'dropout': dropout,
-        'activation': activation,
-        'optimizer': optim_name
+    # lr = trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True)
+    # weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
+    # dropout = trial.suggest_float('dropout', 0.0, 0.7)
+    # activation = trial.suggest_categorical('activation', ['relu', 'leakyrelu', 'elu'])
+    # optim_name = trial.suggest_categorical('optimizer',
+    #                                        ['Adam', 'NAdam', 'AdamW', 'RAdam'])
+    optim_params = {
+        'lr': trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True),
+        'weight_decay': trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True),
+        'optimizer': trial.suggest_categorical('optimizer',
+                                           ['Adam', 'NAdam', 'AdamW', 'RAdam']),
+        }
+    
+    model_params = {
+        'activation': trial.suggest_categorical('activation', ['relu', 'leakyrelu', 'elu']),
+        'dropout': trial.suggest_float('dropout', 0.0, 0.7),
+        'n_units': trial.suggest_categorical('n_units', [2** i for i in range(2, 8)]),
+        'num_layers': trial.suggest_int('num_layers', 1, 5)
+
     }
-    return kwargs
+    return optim_params, model_params
 
 
 def initialize_model(trial, data, dataset, args):
-    model_params = get_hyperparams_from_trial(trial)
-    
-    kwargs = {
+    optim_params, model_params = get_hyperparams_from_trial(trial)
+    model_params.update({
         'in_channels': data.num_features,
         'out_channels': dataset.num_classes,
-        'dropout': model_params['dropout'],
-        'activation': model_params['activation']
-        }
+        })
     
-    for param in MODEL_PARAMS[args.model]:
-        param_type, param_range = PARAMS_TYPES[param]
+    for param in EXTRA_MODEL_PARAMS[args.model]:
+        param_type, param_range = EXTRA_PARAMS_TYPES[param]
         if param_type == 'categorical':
             suggest = trial.suggest_categorical(param, param_range)
         elif param_type == 'int':
             suggest = trial.suggest_int(param, *param_range)
         elif param_type == 'float':
             suggest = trial.suggest_float(param, *param_range)
-        kwargs.update({param: suggest})
+        model_params.update({param: suggest})
     
-    model = getattr(nn_model, args.model+'Model')(**kwargs)
-    optimizer = getattr(optim, model_params['optimizer'])(model.parameters(),
-                                           lr=model_params['lr'],
-                                           weight_decay=model_params['weight_decay'])
+    model = getattr(nn_model, args.model+'Model')(**model_params)
+    optimizer = getattr(optim, optim_params['optimizer'])(model.parameters(),
+                                           lr=optim_params['lr'],
+                                           weight_decay=optim_params['weight_decay'])
     return model, optimizer
 
 
