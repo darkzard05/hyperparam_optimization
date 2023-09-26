@@ -33,8 +33,6 @@ EXTRA_PARAMS_TYPES = {
     'alpha': ('float', [5e-2, 2e-1]),
     'kernel_size': ('int', [1, 8]),
     'heads': ('int', [1, 8])
-    # 'n_units': ('categorical', [2** i for i in range(2, 8)]),
-    # 'num_layers': ('int', [1, 3])
 }
 
 def preprocess_data(data):
@@ -72,13 +70,7 @@ def evaluate(data, model):
     return results['train'], results['val'], results['test']
 
 
-def get_hyperparams_from_trial(trial):
-    # lr = trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True)
-    # weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
-    # dropout = trial.suggest_float('dropout', 0.0, 0.7)
-    # activation = trial.suggest_categorical('activation', ['relu', 'leakyrelu', 'elu'])
-    # optim_name = trial.suggest_categorical('optimizer',
-    #                                        ['Adam', 'NAdam', 'AdamW', 'RAdam'])
+def get_hyperparams_from_trial(trial, model_name):
     optim_params = {
         'lr': trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True),
         'weight_decay': trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True),
@@ -91,19 +83,9 @@ def get_hyperparams_from_trial(trial):
         'dropout': trial.suggest_float('dropout', 0.0, 0.7),
         'n_units': trial.suggest_categorical('n_units', [2** i for i in range(2, 8)]),
         'num_layers': trial.suggest_int('num_layers', 1, 5)
-
-    }
-    return optim_params, model_params
-
-
-def initialize_model(trial, data, dataset, args):
-    optim_params, model_params = get_hyperparams_from_trial(trial)
-    model_params.update({
-        'in_channels': data.num_features,
-        'out_channels': dataset.num_classes,
-        })
+        }
     
-    for param in EXTRA_MODEL_PARAMS[args.model]:
+    for param in EXTRA_MODEL_PARAMS[model_name]:
         param_type, param_range = EXTRA_PARAMS_TYPES[param]
         if param_type == 'categorical':
             suggest = trial.suggest_categorical(param, param_range)
@@ -111,7 +93,17 @@ def initialize_model(trial, data, dataset, args):
             suggest = trial.suggest_int(param, *param_range)
         elif param_type == 'float':
             suggest = trial.suggest_float(param, *param_range)
-        model_params.update({param: suggest})
+        model_params[param] = suggest
+        
+    return optim_params, model_params
+
+
+def initialize_model(trial, data, dataset, args):
+    optim_params, model_params = get_hyperparams_from_trial(trial, args.model)
+    model_params.update({
+        'in_channels': data.num_features,
+        'out_channels': dataset.num_classes,
+        })
     
     model = getattr(nn_model, args.model+'Model')(**model_params)
     optimizer = getattr(optim, optim_params['optimizer'])(model.parameters(),
@@ -196,8 +188,9 @@ def display_results(study, args):
     Parameters:''')
     
     for key, value in trial.params.items():
-        print(f'      {key}: {value:.4f}' if isinstance(value, float) else f'      {key}: {value}')
-
+        value_str = f'{value:.4f}' if isinstance(value, float) else str(value)
+        print(f'      {key}: {value_str}')
+    
 
 def valid_positive_int(x):
     try:
@@ -229,7 +222,7 @@ if __name__ == '__main__':
                         name=args.dataset,
                         split=args.split,
                         transform=T.TargetIndegree())
-
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0].to(device)
     
