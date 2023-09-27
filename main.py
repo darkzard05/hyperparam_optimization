@@ -15,8 +15,10 @@ from optuna.pruners import HyperbandPruner
 from optuna.trial import TrialState
 
 import nn_model
+import data_loader
 
 DATA_DEFAULT_PATH = '/data'
+LOG_INTERVAL = 10
 
 SUPPORTED_MODELS = ['APPNP', 'Splineconv', 'GAT']
 SUPPORTED_DATASETS = ['Cora', 'PubMed', 'CiteSeer', 'Reddit']
@@ -117,7 +119,6 @@ def objective(trial, data, dataset, args, device):
     model.to(device)
     
     best_val_acc, best_test_acc = 0, 0
-    LOG_INTERVAL = 10
     
     for epoch in range(1, args.epochs+1):
         loss = train(data, model, optimizer)
@@ -218,10 +219,14 @@ if __name__ == '__main__':
     validate_args(args)
     
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
-    dataset = Planetoid(root=dataset_path,
-                        name=args.dataset,
-                        split=args.split,
-                        transform=T.TargetIndegree())
+    dataset = data_loader.load_dataset(path=dataset_path,
+                                       name=args.dataset,
+                                       split=args.split,
+                                       transform=T.TargetIndegree())
+    # dataset = Planetoid(root=dataset_path,
+    #                     name=args.dataset,
+    #                     split=args.split,
+    #                     transform=T.TargetIndegree())
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0].to(device)
