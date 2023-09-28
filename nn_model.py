@@ -13,7 +13,7 @@ ACTIVATION_FUNCTIONS = {
 }
 
 
-def build_model_list(model, in_channels, out_channels, n_units, num_layers,
+def build_layers(model, in_channels, out_channels, n_units, num_layers,
                      heads=1, multi_factor=1, **kwargs):
     model_list = ModuleList()
     for layer in range(1, num_layers+1):
@@ -46,7 +46,7 @@ class APPNPModel(torch.nn.Module):
         self.dropout = dropout
         self.activation = ACTIVATION_FUNCTIONS[activation]
         self.num_layers = num_layers
-        self.model_list = build_model_list(Linear, self.in_channels, self.out_channels,
+        self.model_list = build_layers(Linear, self.in_channels, self.out_channels,
                                            self.n_units, self.num_layers)
         self.prop = APPNP(K=self.K, alpha=self.alpha)
         self.reset_parameters()
@@ -86,7 +86,7 @@ class SplineconvModel(torch.nn.Module):
         self.dropout = dropout
         self.activation = ACTIVATION_FUNCTIONS[activation]
         self.num_layers = num_layers
-        self.model_list = build_model_list(SplineConv, self.in_channels, self.out_channels,
+        self.model_list = build_layers(SplineConv, self.in_channels, self.out_channels,
                                            self.n_units, self.num_layers,
                                            dim=1, kernel_size=self.kernel_size)
         self.reset_parameters()
@@ -124,7 +124,7 @@ class GATModel(torch.nn.Module):
         self.dropout = dropout
         self.activation = ACTIVATION_FUNCTIONS[activation]
         self.num_layers = num_layers
-        self.model_list = build_model_list(GATConv, self.in_channels, self.out_channels,
+        self.model_list = build_layers(GATConv, self.in_channels, self.out_channels,
                                            self.n_units, self.num_layers, heads=self.heads,
                                            dropout=self.dropout, multi_factor=self.heads)
         self.reset_parameters()
