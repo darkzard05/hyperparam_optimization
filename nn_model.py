@@ -13,6 +13,11 @@ ACTIVATION_FUNCTIONS = {
 }
 
 
+def valid_activation(activation):
+    if activation not in ACTIVATION_FUNCTIONS:
+            raise ValueError(f'Activation {activation} is not a supported activation function. Supported activation: {", ".join(ACTIVATION_FUNCTIONS.keys())}' )
+
+
 def build_layers(model, in_channels, out_channels, n_units, num_layers,
                      heads=1, multi_factor=1, **kwargs):
     model_list = ModuleList()
@@ -38,8 +43,7 @@ class APPNPModel(torch.nn.Module):
                  num_layers: int = 1
                  ):
         super().__init__()
-        if activation not in ACTIVATION_FUNCTIONS:
-            raise ValueError(f'Activation {activation} is not a supported activation function. Supported activation: {", ".join(ACTIVATION_FUNCTIONS.keys())}' )
+        valid_activation(activation)
         
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -82,8 +86,7 @@ class SplineconvModel(torch.nn.Module):
                  num_layers: int = 1
                  ):
         super().__init__()
-        if activation not in ACTIVATION_FUNCTIONS:
-            raise ValueError(f'Activation {activation} is not a supported activation function. Supported activation: {", ".join(ACTIVATION_FUNCTIONS.keys())}' )
+        valid_activation(activation)
         
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -123,8 +126,7 @@ class GATModel(torch.nn.Module):
                  num_layers: int = 1
                  ):
         super().__init__()
-        if activation not in ACTIVATION_FUNCTIONS:
-            raise ValueError(f'Activation {activation} is not a supported activation function. Supported activation: {", ".join(ACTIVATION_FUNCTIONS.keys())}' )
+        valid_activation(activation)
         
         self.in_channels = in_channels
         self.out_channels = out_channels
