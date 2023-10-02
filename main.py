@@ -223,10 +223,6 @@ if __name__ == '__main__':
                                        name=args.dataset,
                                        split=args.split,
                                        transform=T.TargetIndegree())
-    # dataset = Planetoid(root=dataset_path,
-    #                     name=args.dataset,
-    #                     split=args.split,
-    #                     transform=T.TargetIndegree())
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0].to(device)
