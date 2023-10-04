@@ -15,7 +15,7 @@ from optuna.pruners import HyperbandPruner
 from optuna.trial import TrialState
 
 import nn_model
-import data_loader
+import load_dataset
 
 DATA_DEFAULT_PATH = '/data'
 LOG_INTERVAL = 10
@@ -219,7 +219,7 @@ if __name__ == '__main__':
     validate_args(args)
     
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
-    dataset = data_loader.load_dataset(path=dataset_path,
+    dataset = load_dataset.load_dataset(path=dataset_path,
                                        name=args.dataset,
                                        split=args.split,
                                        transform=T.TargetIndegree())
