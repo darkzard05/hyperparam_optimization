@@ -13,9 +13,10 @@ ACTIVATION_FUNCTIONS = {
 }
 
 
-def valid_activation(activation):
+def get_activation(activation):
     if activation not in ACTIVATION_FUNCTIONS:
-            raise ValueError(f'Activation {activation} is not a supported activation function. Supported activation: {", ".join(ACTIVATION_FUNCTIONS.keys())}' )
+        raise ValueError(f'Activation {activation} is not a supported activation function. Supported activation: {", ".join(ACTIVATION_FUNCTIONS.keys())}' )
+    return ACTIVATION_FUNCTIONS[activation]
 
 
 def build_layers(model, in_channels, out_channels, n_units, num_layers,
@@ -43,15 +44,13 @@ class APPNPModel(torch.nn.Module):
                  num_layers: int = 1
                  ):
         super().__init__()
-        valid_activation(activation)
-        
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.n_units = n_units
         self.K = K
         self.alpha = alpha
         self.dropout = dropout
-        self.activation = ACTIVATION_FUNCTIONS[activation]
+        self.activation = get_activation(activation)
         self.num_layers = num_layers
         self.model_list = build_layers(Linear, self.in_channels, self.out_channels,
                                            self.n_units, self.num_layers)
@@ -86,14 +85,12 @@ class SplineconvModel(torch.nn.Module):
                  num_layers: int = 1
                  ):
         super().__init__()
-        valid_activation(activation)
-        
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
         self.n_units = n_units
         self.dropout = dropout
-        self.activation = ACTIVATION_FUNCTIONS[activation]
+        self.activation = get_activation(activation)
         self.num_layers = num_layers
         self.model_list = build_layers(SplineConv, self.in_channels, self.out_channels,
                                            self.n_units, self.num_layers,
@@ -126,14 +123,12 @@ class GATModel(torch.nn.Module):
                  num_layers: int = 1
                  ):
         super().__init__()
-        valid_activation(activation)
-        
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.n_units = n_units
         self.heads = heads
         self.dropout = dropout
-        self.activation = ACTIVATION_FUNCTIONS[activation]
+        self.activation = get_activation(activation)
         self.num_layers = num_layers
         self.model_list = build_layers(GATConv, self.in_channels, self.out_channels,
                                            self.n_units, self.num_layers, heads=self.heads,
