@@ -58,6 +58,9 @@ class APPNPModel(BaseModel):
         
         self.K = K
         self.alpha = alpha
+
+        self.dropout = dropout
+        self.activation = get_activation(activation)
         
         self.num_layers = num_layers
         self.model_list = build_layers(Linear, self.in_channels, self.out_channels,
@@ -94,9 +97,9 @@ class SplineconvModel(BaseModel):
         self.n_units = n_units
         self.dropout = dropout
         self.activation = get_activation(activation)
-        
+
         self.kernel_size = kernel_size
-        
+
         self.num_layers = num_layers
         self.model_list = build_layers(SplineConv, self.in_channels, self.out_channels,
                                            self.n_units, self.num_layers,
@@ -130,7 +133,7 @@ class GATModel(BaseModel):
         self.n_units = n_units
         self.dropout = dropout
         self.activation = get_activation(activation)
-        
+
         self.heads = heads
         
         self.num_layers = num_layers
