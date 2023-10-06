@@ -13,9 +13,10 @@ ACTIVATION_FUNCTIONS = {
 }
 
 
-def valid_activation(activation):
+def get_activation(activation):
     if activation not in ACTIVATION_FUNCTIONS:
-            raise ValueError(f'Activation {activation} is not a supported activation function. Supported activation: {", ".join(ACTIVATION_FUNCTIONS.keys())}' )
+        raise ValueError(f'Activation {activation} is not a supported activation function. Supported activation: {", ".join(ACTIVATION_FUNCTIONS.keys())}' )
+    return ACTIVATION_FUNCTIONS[activation]
 
 
 def build_layers(model, in_channels, out_channels, n_units, num_layers,
@@ -31,7 +32,13 @@ def build_layers(model, in_channels, out_channels, n_units, num_layers,
     return model_list
 
 
-class APPNPModel(torch.nn.Module):
+class BaseModel(torch.nn.Module):
+    def reset_parameters(self):
+        for layer in self.model_list:
+            layer.reset_parameters()
+
+
+class APPNPModel(BaseModel):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
@@ -43,25 +50,21 @@ class APPNPModel(torch.nn.Module):
                  num_layers: int = 1
                  ):
         super().__init__()
-        valid_activation(activation)
-        
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.n_units = n_units
+        self.dropout = dropout
+        self.activation = get_activation(activation)
+        
         self.K = K
         self.alpha = alpha
-        self.dropout = dropout
-        self.activation = ACTIVATION_FUNCTIONS[activation]
+        
         self.num_layers = num_layers
         self.model_list = build_layers(Linear, self.in_channels, self.out_channels,
                                            self.n_units, self.num_layers)
         self.prop = APPNP(K=self.K, alpha=self.alpha)
         self.reset_parameters()
-        
-    def reset_parameters(self):
-        for linear in self.model_list:
-            linear.reset_parameters()
-        
+    
     def forward(self,
                 x: Tensor,
                 edge_index: Adj,
@@ -75,7 +78,7 @@ class APPNPModel(torch.nn.Module):
         return x
 
 
-class SplineconvModel(torch.nn.Module):
+class SplineconvModel(BaseModel):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
@@ -86,24 +89,20 @@ class SplineconvModel(torch.nn.Module):
                  num_layers: int = 1
                  ):
         super().__init__()
-        valid_activation(activation)
-        
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.kernel_size = kernel_size
         self.n_units = n_units
         self.dropout = dropout
-        self.activation = ACTIVATION_FUNCTIONS[activation]
+        self.activation = get_activation(activation)
+        
+        self.kernel_size = kernel_size
+        
         self.num_layers = num_layers
         self.model_list = build_layers(SplineConv, self.in_channels, self.out_channels,
                                            self.n_units, self.num_layers,
                                            dim=1, kernel_size=self.kernel_size)
         self.reset_parameters()
-        
-    def reset_parameters(self):
-        for splineconv in self.model_list:
-            splineconv.reset_parameters()
-        
+
     def forward(self,
                 x: Tensor,
                 edge_index: Adj,
@@ -115,7 +114,7 @@ class SplineconvModel(torch.nn.Module):
         return x
 
     
-class GATModel(torch.nn.Module):
+class GATModel(BaseModel):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
@@ -126,24 +125,20 @@ class GATModel(torch.nn.Module):
                  num_layers: int = 1
                  ):
         super().__init__()
-        valid_activation(activation)
-        
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.n_units = n_units
-        self.heads = heads
         self.dropout = dropout
-        self.activation = ACTIVATION_FUNCTIONS[activation]
+        self.activation = get_activation(activation)
+        
+        self.heads = heads
+        
         self.num_layers = num_layers
         self.model_list = build_layers(GATConv, self.in_channels, self.out_channels,
                                            self.n_units, self.num_layers, heads=self.heads,
                                            dropout=self.dropout, multi_factor=self.heads)
         self.reset_parameters()
-        
-    def reset_parameters(self):
-        for gatconv in self.model_list:
-            gatconv.reset_parameters()
-        
+    
     def forward(self,
                 x: Tensor,
                 edge_index: Adj,
