@@ -6,7 +6,6 @@ import argparse
 import torch
 import torch.nn as nn
 from torch import optim
-from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
 
 import optuna
