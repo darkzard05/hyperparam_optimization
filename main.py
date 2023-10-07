@@ -42,7 +42,7 @@ def preprocess_data(data):
     return x, edge_index, edge_attr
 
 
-def train(data, model, optimizer):
+def train(data, model, optimizer, scheduler):
     x, edge_index, edge_attr = preprocess_data(data)
     model.train()
     optimizer.zero_grad()
@@ -50,6 +50,7 @@ def train(data, model, optimizer):
     loss = nn.CrossEntropyLoss()(output, target)
     loss.backward()
     optimizer.step()
+    scheduler.step()
     return float(loss)
 
 
@@ -116,11 +117,13 @@ def initialize_model(trial, data, dataset, args):
 def objective(trial, data, dataset, args, device):
     model, optimizer = initialize_model(trial, data, dataset, args)
     model.to(device)
+    scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.1, steps_per_epoch=10, epochs=args.epochs,
+                                              anneal_strategy='linear')
     
     best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(1, args.epochs+1):
-        loss = train(data, model, optimizer)
+        loss = train(data, model, optimizer, scheduler)
         train_acc, val_acc, test_acc = evaluate(data, model)
         
         if best_val_acc < val_acc:
