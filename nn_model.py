@@ -33,22 +33,12 @@ def build_layers(model, in_channels, out_channels, n_units, num_layers,
 
 
 class BaseModel(torch.nn.Module):
-    def reset_parameters(self):
-        for layer in self.model_list:
-            layer.reset_parameters()
-
-
-class APPNPModel(BaseModel):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
-                 n_units: int,
-                 K: int = 50,
-                 alpha: float = 0.1,
+                 n_units: int = 16,
                  dropout: float = 0.5,
-                 activation: str = 'relu',
-                 num_layers: int = 1
-                 ):
+                 activation: str = 'relu'):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -56,11 +46,21 @@ class APPNPModel(BaseModel):
         self.dropout = dropout
         self.activation = get_activation(activation)
         
+    def reset_parameters(self):
+        for layer in self.model_list:
+            layer.reset_parameters()
+
+
+class APPNPModel(BaseModel):
+    def __init__(self,
+                 *args,
+                 K: int = 50,
+                 alpha: float = 0.1,
+                 num_layers: int = 1,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
         self.K = K
         self.alpha = alpha
-
-        self.dropout = dropout
-        self.activation = get_activation(activation)
         
         self.num_layers = num_layers
         self.model_list = build_layers(Linear, self.in_channels, self.out_channels,
@@ -83,21 +83,11 @@ class APPNPModel(BaseModel):
 
 class SplineconvModel(BaseModel):
     def __init__(self,
-                 in_channels: int,
-                 out_channels: int,
-                 n_units: int = 32,
+                 *args,
                  kernel_size: int = 2,
-                 dropout: float = 0.5,
-                 activation: str = 'relu',
-                 num_layers: int = 1
-                 ):
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.n_units = n_units
-        self.dropout = dropout
-        self.activation = get_activation(activation)
-
+                 num_layers: int = 1,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
         self.kernel_size = kernel_size
 
         self.num_layers = num_layers
@@ -119,21 +109,12 @@ class SplineconvModel(BaseModel):
     
 class GATModel(BaseModel):
     def __init__(self,
-                 in_channels: int,
-                 out_channels: int,
-                 n_units: int = 32,
+                 *args,
                  heads: int = 8,
-                 dropout: float = 0.5,
-                 activation: str = 'relu',
-                 num_layers: int = 1
+                 num_layers: int = 1,
+                 **kwargs
                  ):
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.n_units = n_units
-        self.dropout = dropout
-        self.activation = get_activation(activation)
-
+        super().__init__(*args, **kwargs)
         self.heads = heads
         
         self.num_layers = num_layers
