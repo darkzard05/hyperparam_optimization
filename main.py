@@ -15,26 +15,10 @@ from optuna.trial import TrialState
 
 import nn_model
 import load_dataset
+from settings import (SUPPORTED_SPLITS, SUPPORTED_DATASETS, SUPPORTED_MODELS,
+                      DATA_DEFAULT_PATH, LOG_INTERVAL,
+                      EXTRA_MODEL_PARAMS, EXTRA_PARAMS_TYPES)
 
-DATA_DEFAULT_PATH = '/data'
-LOG_INTERVAL = 10
-
-SUPPORTED_MODELS = ['APPNP', 'Splineconv', 'GAT']
-SUPPORTED_DATASETS = ['Cora', 'PubMed', 'CiteSeer', 'Reddit']
-SUPPORTED_SPLITS = ['public', 'random', 'full', 'geom-gcn']
-
-EXTRA_MODEL_PARAMS = {
-    'APPNP': {'K', 'alpha'},
-    'Splineconv': {'kernel_size'},
-    'GAT': {'heads'}
-    }
-
-EXTRA_PARAMS_TYPES = {
-    'K': ('int', [5, 2e+2]),
-    'alpha': ('float', [5e-2, 2e-1]),
-    'kernel_size': ('int', [1, 8]),
-    'heads': ('int', [1, 8])
-}
 
 def preprocess_data(data):
     x = (data.x - data.x.mean()) / data.x.std()
@@ -72,21 +56,17 @@ def evaluate(data, model):
     return results['train'], results['val'], results['test']
 
 
-def get_hyperparams_from_trial(trial, model_name):
-    optim_params = {
-        'lr': trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True),
-        'weight_decay': trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True),
-        'optimizer': trial.suggest_categorical('optimizer',
-                                           ['Adam', 'NAdam', 'AdamW', 'RAdam']),
-        }
-    
+def get_common_model_params(trial):
     model_params = {
         'activation': trial.suggest_categorical('activation', ['relu', 'leakyrelu', 'elu']),
         'dropout': trial.suggest_float('dropout', 0.0, 0.7),
         'n_units': trial.suggest_categorical('n_units', [2** i for i in range(2, 8)]),
         'num_layers': trial.suggest_int('num_layers', 1, 5)
         }
-    
+    return model_params
+
+
+def add_extra_model_params(trial, model_name, model_params):
     for param in EXTRA_MODEL_PARAMS[model_name]:
         param_type, param_range = EXTRA_PARAMS_TYPES[param]
         if param_type == 'categorical':
@@ -96,26 +76,41 @@ def get_hyperparams_from_trial(trial, model_name):
         elif param_type == 'float':
             suggest = trial.suggest_float(param, *param_range)
         model_params[param] = suggest
-        
-    return optim_params, model_params
+    return model_params
+
+
+def get_optim_params(trial):
+    optim_params = {
+        'lr': trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True),
+        'weight_decay': trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True),
+        'optimizer': trial.suggest_categorical('optimizer',
+                                           ['Adam', 'NAdam', 'AdamW', 'RAdam']),
+        }
+    return optim_params
 
 
 def initialize_model(trial, data, dataset, args):
-    optim_params, model_params = get_hyperparams_from_trial(trial, args.model)
-    model_params.update({
-        'in_channels': data.num_features,
-        'out_channels': dataset.num_classes,
-        })
-    
+    model_basic_params = get_common_model_params(trial)
+    model_params = add_extra_model_params(trial, args.model, model_basic_params)
+    model_params.update({'in_channels': data.num_features,
+                         'out_channels': dataset.num_classes
+                         })
     model = getattr(nn_model, args.model+'Model')(**model_params)
+    
+    return model
+
+
+def initialize_optimizer(trial, model):
+    optim_params = get_optim_params(trial)
     optimizer = getattr(optim, optim_params['optimizer'])(model.parameters(),
                                            lr=optim_params['lr'],
                                            weight_decay=optim_params['weight_decay'])
-    return model, optimizer
+    return optimizer
 
 
 def objective(trial, data, dataset, args, device):
-    model, optimizer = initialize_model(trial, data, dataset, args)
+    model = initialize_model(trial, data, dataset, args)
+    optimizer = initialize_optimizer(trial, model)
     model.to(device)
     scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.1, steps_per_epoch=10, epochs=args.epochs,
                                               anneal_strategy='linear')
