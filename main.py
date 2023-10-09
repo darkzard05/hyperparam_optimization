@@ -16,8 +16,10 @@ from optuna.trial import TrialState
 import nn_model
 import load_dataset
 from settings import (SUPPORTED_SPLITS, SUPPORTED_DATASETS, SUPPORTED_MODELS,
+                      MAX_LR, STEPS_PER_EPOCH,
                       DATA_DEFAULT_PATH, LOG_INTERVAL,
-                      EXTRA_MODEL_PARAMS, EXTRA_PARAMS_TYPES)
+                      EXTRA_MODEL_PARAMS, EXTRA_PARAMS_TYPES,
+                      )
 
 
 def preprocess_data(data):
@@ -91,12 +93,11 @@ def get_optim_params(trial):
 
 def initialize_model(trial, data, dataset, args):
     model_basic_params = get_common_model_params(trial)
-    model_params = add_extra_model_params(trial, args.model, model_basic_params)
-    model_params.update({'in_channels': data.num_features,
-                         'out_channels': dataset.num_classes
-                         })
+    model_extra_params = add_extra_model_params(trial, args.model, model_basic_params)
+    model_params = {'in_channels': data.num_features,
+                    'out_channels': dataset.num_classes,
+                    **model_basic_params, **model_extra_params}
     model = getattr(nn_model, args.model+'Model')(**model_params)
-    
     return model
 
 
@@ -112,7 +113,8 @@ def objective(trial, data, dataset, args, device):
     model = initialize_model(trial, data, dataset, args)
     optimizer = initialize_optimizer(trial, model)
     model.to(device)
-    scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.1, steps_per_epoch=10, epochs=args.epochs,
+    scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=MAX_LR, steps_per_epoch=STEPS_PER_EPOCH,
+                                              epochs=args.epochs,
                                               anneal_strategy='linear')
     
     best_val_acc, best_test_acc = 0, 0

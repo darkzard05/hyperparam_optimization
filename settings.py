@@ -1,5 +1,7 @@
 DATA_DEFAULT_PATH = '/data'
 LOG_INTERVAL = 10
+MAX_LR = 0.1
+STEPS_PER_EPOCH = 10
 
 SUPPORTED_MODELS = ['APPNP', 'Splineconv', 'GAT']
 SUPPORTED_DATASETS = ['Cora', 'PubMed', 'CiteSeer', 'Reddit']
