@@ -20,15 +20,12 @@ def get_activation(activation):
 
 
 def build_layers(model, in_channels, out_channels, n_units, num_layers,
-                     heads=1, multi_factor=1, **kwargs):
+                 heads=1, multi_factor=1, **kwargs):
     model_list = ModuleList()
-    for layer in range(1, num_layers+1):
-        if layer == num_layers:
-            current = out_channels
-        else:
-            current = n_units * multi_factor
-        model_list.append(model(in_channels, current, **kwargs))
-        in_channels = current
+    for layer in range(num_layers):
+        current_out_channels = out_channels if layer == num_layers - 1 else n_units * multi_factor
+        model_list.append(model(in_channels, current_out_channels, **kwargs))
+        in_channels = current_out_channels
     return model_list
 
 
