@@ -97,7 +97,8 @@ def initialize_model(trial, data, dataset, args):
     model_params = {'in_channels': data.num_features,
                     'out_channels': dataset.num_classes,
                     **model_basic_params, **model_extra_params}
-    model = getattr(nn_model, args.model+'Model')(**model_params)
+    model_class_name = args.model+'Model'
+    model = getattr(nn_model, model_class_name)(**model_params)
     return model
 
 
@@ -128,7 +129,8 @@ def objective(trial, data, dataset, args, device):
             best_test_acc = test_acc
             
         if epoch % LOG_INTERVAL == 0 or best_val_acc == val_acc:
-            print(f'epoch: {epoch}, loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}')
+            log_message = f'epoch: [{epoch}/{args.epochs}], loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}'
+            print(log_message)
             
         trial.report(val_acc, epoch)
         
