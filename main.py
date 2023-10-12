@@ -28,8 +28,8 @@ def preprocess_data(data):
     return x, edge_index, edge_attr
 
 
-def train(data, model, optimizer, scheduler):
-    x, edge_index, edge_attr = preprocess_data(data)
+def train(preprocessed_data, data, model, optimizer, scheduler):
+    x, edge_index, edge_attr = preprocessed_data
     model.train()
     optimizer.zero_grad()
     output, target = model(x, edge_index, edge_attr)[data.train_mask], data.y[data.train_mask]
@@ -40,8 +40,8 @@ def train(data, model, optimizer, scheduler):
     return float(loss)
 
 
-def test(data, model, mask):
-    x, edge_index, edge_attr = preprocess_data(data)
+def test(preprocessed_data, data, model, mask):
+    x, edge_index, edge_attr = preprocessed_data
     model.eval()
     with torch.no_grad():
         output = model(x, edge_index, edge_attr)
@@ -52,9 +52,9 @@ def test(data, model, mask):
     return float(accuracy)
 
 
-def evaluate(data, model):
+def evaluate(preprocessed_data, data, model):
     masks = {'train': data.train_mask, 'val': data.val_mask, 'test': data.test_mask}
-    results = {key: test(data, model, mask) for key, mask in masks.items()}
+    results = {key: test(preprocessed_data, data, model, mask) for key, mask in masks.items()}
     return results['train'], results['val'], results['test']
 
 
@@ -113,16 +113,16 @@ def initialize_optimizer(trial, model):
 def objective(trial, data, dataset, args, device):
     model = initialize_model(trial, data, dataset, args)
     optimizer = initialize_optimizer(trial, model)
+    preprocessed_data = preprocess_data(data)
     model.to(device)
     scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=MAX_LR, steps_per_epoch=STEPS_PER_EPOCH,
                                               epochs=args.epochs,
                                               anneal_strategy='linear')
     
     best_val_acc, best_test_acc = 0, 0
-    
     for epoch in range(1, args.epochs+1):
-        loss = train(data, model, optimizer, scheduler)
-        train_acc, val_acc, test_acc = evaluate(data, model)
+        loss = train(preprocessed_data, data, model, optimizer, scheduler)
+        train_acc, val_acc, test_acc = evaluate(preprocessed_data, data, model)
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
