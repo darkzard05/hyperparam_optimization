@@ -110,10 +110,9 @@ def initialize_optimizer(trial, model):
     return optimizer
 
 
-def objective(trial, data, dataset, args, device):
+def objective(trial, preprocessed_data, data, dataset, args, device):
     model = initialize_model(trial, data, dataset, args)
     optimizer = initialize_optimizer(trial, model)
-    preprocessed_data = preprocess_data(data)
     model.to(device)
     scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=MAX_LR, steps_per_epoch=STEPS_PER_EPOCH,
                                               epochs=args.epochs,
@@ -129,7 +128,7 @@ def objective(trial, data, dataset, args, device):
             best_test_acc = test_acc
             
         if epoch % LOG_INTERVAL == 0 or best_val_acc == val_acc:
-            log_message = f'epoch: [{epoch}/{args.epochs}], loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}'
+            log_message = f'epoch [{epoch}/{args.epochs}], loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}'
             print(log_message)
             
         trial.report(val_acc, epoch)
@@ -228,6 +227,8 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0].to(device)
     
+    preprocessed_data = preprocess_data(data)
+    
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
 
@@ -237,7 +238,8 @@ if __name__ == '__main__':
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
-    study.optimize(lambda trial: objective(trial, data, dataset, args, device), n_trials=args.n_trials)
+    study.optimize(lambda trial: objective(trial, preprocessed_data, data, dataset, args, device),
+                   n_trials=args.n_trials)
 
     save_best_trial_to_json(study, args)
     display_results(study, args)
