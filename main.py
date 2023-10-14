@@ -154,17 +154,6 @@ def save_best_trial_to_json(study, args):
         json.dump(result, f)
 
 
-def validate_args(args):
-    if args.model not in SUPPORTED_MODELS:
-        raise ValueError(f'Model {args.model} is not supported. Supported models: {", ".join(SUPPORTED_MODELS)}.')
-    
-    if args.dataset not in SUPPORTED_DATASETS:
-        raise ValueError(f'Dataset {args.dataset} is not supported. Supported datasets: {", ".join(SUPPORTED_DATASETS)}.')
-
-    if args.split not in SUPPORTED_SPLITS:
-        raise ValueError(f'Split type {args.split} is not supported. Supported split types: {", ".join(SUPPORTED_SPLITS)}.')
-
-
 def display_results(study, args):
     pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
@@ -200,17 +189,16 @@ def valid_positive_int(x):
 if __name__ == '__main__':
     # Settings
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str,
-                        help='one of model APPNP, Splineconv, GAT')
-    parser.add_argument('--dataset', type=str,
-                        help='one of dataset Cora, PubMed, CiteSeer')
-    parser.add_argument('--split', type=str, default='public',
-                        help='one of dataset split type public, random, full, geom-gcn')
+    parser.add_argument('--model', type=str, choices=SUPPORTED_MODELS,
+                        help=f'Choose one of the supported models: {", ".join(SUPPORTED_MODELS)}')
+    parser.add_argument('--dataset', type=str, choices=SUPPORTED_DATASETS,
+                        help=f'Choose one of the supported datasets: {", ".join(SUPPORTED_DATASETS)}')
+    parser.add_argument('--split', type=str, choices=SUPPORTED_SPLITS, default='public',
+                        help=f'Choose one of the supported splits: {", ".join(SUPPORTED_SPLITS)}')
     parser.add_argument('--n_trials', type=valid_positive_int, default=100, help='number of trials')
     parser.add_argument('--epochs', type=valid_positive_int, default=100, help='epochs per trial')
     args = parser.parse_args()
     
-    validate_args(args)
     
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
     dataset = load_dataset.load_dataset(path=dataset_path,
