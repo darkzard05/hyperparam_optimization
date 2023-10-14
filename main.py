@@ -28,7 +28,7 @@ def preprocess_data(data):
     return x, edge_index, edge_attr
 
 
-def train(preprocessed_data, data, model, optimizer, scheduler):
+def train(preprocessed_data, data, model, optimizer):
     x, edge_index, edge_attr = preprocessed_data
     model.train()
     optimizer.zero_grad()
@@ -36,7 +36,6 @@ def train(preprocessed_data, data, model, optimizer, scheduler):
     loss = nn.CrossEntropyLoss()(output, target)
     loss.backward()
     optimizer.step()
-    scheduler.step()
     return float(loss)
 
 
@@ -91,7 +90,8 @@ def get_optim_params(trial):
     return optim_params
 
 
-def initialize_model(trial, data, dataset, args):
+def initialize_model_and_optimizer(trial, data, dataset, args):
+    # Get model parameters
     model_basic_params = get_common_model_params(trial)
     model_extra_params = add_extra_model_params(trial, args.model, model_basic_params)
     model_params = {'in_channels': data.num_features,
@@ -99,28 +99,22 @@ def initialize_model(trial, data, dataset, args):
                     **model_basic_params, **model_extra_params}
     model_class_name = args.model+'Model'
     model = getattr(nn_model, model_class_name)(**model_params)
-    return model
-
-
-def initialize_optimizer(trial, model):
+    
+    # Get optimizer parameters
     optim_params = get_optim_params(trial)
     optimizer = getattr(optim, optim_params['optimizer'])(model.parameters(),
                                            lr=optim_params['lr'],
                                            weight_decay=optim_params['weight_decay'])
-    return optimizer
+    return model, optimizer
 
 
 def objective(trial, preprocessed_data, data, dataset, args, device):
-    model = initialize_model(trial, data, dataset, args)
-    optimizer = initialize_optimizer(trial, model)
+    model, optimizer = initialize_model_and_optimizer(trial, data, dataset, args)
     model.to(device)
-    scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=MAX_LR, steps_per_epoch=STEPS_PER_EPOCH,
-                                              epochs=args.epochs,
-                                              anneal_strategy='linear')
     
     best_val_acc, best_test_acc = 0, 0
     for epoch in range(1, args.epochs+1):
-        loss = train(preprocessed_data, data, model, optimizer, scheduler)
+        loss = train(preprocessed_data, data, model, optimizer)
         train_acc, val_acc, test_acc = evaluate(preprocessed_data, data, model)
         
         if best_val_acc < val_acc:
@@ -204,7 +198,7 @@ def valid_positive_int(x):
 
 
 if __name__ == '__main__':
-    # settings
+    # Settings
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', type=str,
                         help='one of model APPNP, Splineconv, GAT')
