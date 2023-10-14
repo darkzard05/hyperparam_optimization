@@ -15,21 +15,19 @@ from optuna.trial import TrialState
 
 import nn_model
 import load_dataset
-from settings import (SUPPORTED_SPLITS, SUPPORTED_DATASETS, SUPPORTED_MODELS,
-                      MAX_LR, STEPS_PER_EPOCH,
+from settings import (SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS,
                       DATA_DEFAULT_PATH, LOG_INTERVAL,
                       EXTRA_MODEL_PARAMS, EXTRA_PARAMS_TYPES,
                       )
 
 
 def preprocess_data(data):
-    x = (data.x - data.x.mean()) / data.x.std()
-    edge_index, edge_attr = data.edge_index, data.edge_attr
-    return x, edge_index, edge_attr
+    data.x = (data.x - data.x.mean()) / data.x.std()
+    return data
 
 
 def train(preprocessed_data, data, model, optimizer):
-    x, edge_index, edge_attr = preprocessed_data
+    x, edge_index, edge_attr = preprocessed_data.x, preprocessed_data.edge_index, preprocessed_data.edge_attr
     model.train()
     optimizer.zero_grad()
     output, target = model(x, edge_index, edge_attr)[data.train_mask], data.y[data.train_mask]
@@ -40,7 +38,7 @@ def train(preprocessed_data, data, model, optimizer):
 
 
 def test(preprocessed_data, data, model, mask):
-    x, edge_index, edge_attr = preprocessed_data
+    x, edge_index, edge_attr = preprocessed_data.x, preprocessed_data.edge_index, preprocessed_data.edge_attr
     model.eval()
     with torch.no_grad():
         output = model(x, edge_index, edge_attr)
@@ -206,11 +204,11 @@ if __name__ == '__main__':
                                        split=args.split,
                                        transform=T.TargetIndegree())
     
+    preprocessed_data = preprocess_data(dataset[0])
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data = dataset[0].to(device)
-    
-    preprocessed_data = preprocess_data(data)
-    
+    data = preprocessed_data.to(device)
+        
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
 
