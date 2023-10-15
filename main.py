@@ -22,12 +22,13 @@ from settings import (SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS,
 
 
 def preprocess_data(data):
-    data.x = (data.x - data.x.mean()) / data.x.std()
-    return data
+    x = (data.x - data.x.mean()) / data.x.std()
+    edge_index = data.edge_index
+    edge_attr = data.edge_attr
+    return x, edge_index, edge_attr
 
 
-def train(preprocessed_data, data, model, optimizer):
-    x, edge_index, edge_attr = preprocessed_data.x, preprocessed_data.edge_index, preprocessed_data.edge_attr
+def train(x, edge_index, edge_attr, data, model, optimizer):
     model.train()
     optimizer.zero_grad()
     output, target = model(x, edge_index, edge_attr)[data.train_mask], data.y[data.train_mask]
@@ -37,8 +38,7 @@ def train(preprocessed_data, data, model, optimizer):
     return float(loss)
 
 
-def test(preprocessed_data, data, model, mask):
-    x, edge_index, edge_attr = preprocessed_data.x, preprocessed_data.edge_index, preprocessed_data.edge_attr
+def test(x, edge_index, edge_attr, data, model, mask):
     model.eval()
     with torch.no_grad():
         output = model(x, edge_index, edge_attr)
@@ -49,9 +49,9 @@ def test(preprocessed_data, data, model, mask):
     return float(accuracy)
 
 
-def evaluate(preprocessed_data, data, model):
+def evaluate(x, edge_index, edge_attr, data, model):
     masks = {'train': data.train_mask, 'val': data.val_mask, 'test': data.test_mask}
-    results = {key: test(preprocessed_data, data, model, mask) for key, mask in masks.items()}
+    results = {key: test(x, edge_index, edge_attr, data, model, mask) for key, mask in masks.items()}
     return results['train'], results['val'], results['test']
 
 
@@ -106,14 +106,14 @@ def initialize_model_and_optimizer(trial, data, dataset, args):
     return model, optimizer
 
 
-def objective(trial, preprocessed_data, data, dataset, args, device):
+def objective(trial, data, dataset, args, device):
     model, optimizer = initialize_model_and_optimizer(trial, data, dataset, args)
     model.to(device)
     
     best_val_acc, best_test_acc = 0, 0
     for epoch in range(1, args.epochs+1):
-        loss = train(preprocessed_data, data, model, optimizer)
-        train_acc, val_acc, test_acc = evaluate(preprocessed_data, data, model)
+        loss = train(x, edge_index, edge_attr, data, model, optimizer)
+        train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, data, model)
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
@@ -204,10 +204,11 @@ if __name__ == '__main__':
                                        split=args.split,
                                        transform=T.TargetIndegree())
     
-    preprocessed_data = preprocess_data(dataset[0])
+    x, edge_index, edge_attr = preprocess_data(dataset[0])
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data = preprocessed_data.to(device)
+    x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
+    data = dataset[0].to(device)
         
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
@@ -218,7 +219,7 @@ if __name__ == '__main__':
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
-    study.optimize(lambda trial: objective(trial, preprocessed_data, data, dataset, args, device),
+    study.optimize(lambda trial: objective(trial, data, dataset, args, device),
                    n_trials=args.n_trials)
 
     save_best_trial_to_json(study, args)
