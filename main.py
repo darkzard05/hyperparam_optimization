@@ -17,8 +17,8 @@ import nn_model
 import load_dataset
 from settings import (SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS,
                       DATA_DEFAULT_PATH, LOG_INTERVAL,
-                      EXTRA_MODEL_PARAMS, EXTRA_PARAMS_TYPES,
-                      )
+                      COMMON_MODEL_PARAMS, EXTRA_MODEL_PARAMS, EXTRA_PARAMS_TYPES,
+                      OPTIM_PARAMS)
 
 
 def preprocess_data(data):
@@ -57,10 +57,10 @@ def evaluate(x, edge_index, edge_attr, data, model):
 
 def get_common_model_params(trial):
     model_params = {
-        'activation': trial.suggest_categorical('activation', ['relu', 'leakyrelu', 'elu']),
-        'dropout': trial.suggest_float('dropout', 0.0, 0.7),
-        'n_units': trial.suggest_categorical('n_units', [2** i for i in range(2, 8)]),
-        'num_layers': trial.suggest_int('num_layers', 1, 5)
+        'activation': trial.suggest_categorical('activation', COMMON_MODEL_PARAMS['activation']),
+        'dropout': trial.suggest_float('dropout', *COMMON_MODEL_PARAMS['dropout']),
+        'n_units': trial.suggest_categorical('n_units', COMMON_MODEL_PARAMS['n_units']),
+        'num_layers': trial.suggest_int('num_layers', *COMMON_MODEL_PARAMS['num_layers'])
         }
     return model_params
 
@@ -80,10 +80,9 @@ def add_extra_model_params(trial, model_name, model_params):
 
 def get_optim_params(trial):
     optim_params = {
-        'lr': trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True),
-        'weight_decay': trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True),
-        'optimizer': trial.suggest_categorical('optimizer',
-                                           ['Adam', 'NAdam', 'AdamW', 'RAdam']),
+        'learning_rate': trial.suggest_float('learning_rate', *OPTIM_PARAMS['learning_rate'], log=True),
+        'weight_decay': trial.suggest_float('weight_decay', *OPTIM_PARAMS['weight_decay'], log=True),
+        'optimizer': trial.suggest_categorical('optimizer', OPTIM_PARAMS['optimizer']),
         }
     return optim_params
 
@@ -101,12 +100,12 @@ def initialize_model_and_optimizer(trial, data, dataset, args):
     # Get optimizer parameters
     optim_params = get_optim_params(trial)
     optimizer = getattr(optim, optim_params['optimizer'])(model.parameters(),
-                                           lr=optim_params['lr'],
-                                           weight_decay=optim_params['weight_decay'])
+                                                          lr=optim_params['learning_rate'],
+                                                          weight_decay=optim_params['weight_decay'])
     return model, optimizer
 
 
-def objective(trial, data, dataset, args, device):
+def objective(trial, x, edge_index, edge_attr, data, dataset, args, device):
     model, optimizer = initialize_model_and_optimizer(trial, data, dataset, args)
     model.to(device)
     
@@ -197,7 +196,6 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=valid_positive_int, default=100, help='epochs per trial')
     args = parser.parse_args()
     
-    
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
     dataset = load_dataset.load_dataset(path=dataset_path,
                                        name=args.dataset,
@@ -207,9 +205,9 @@ if __name__ == '__main__':
     x, edge_index, edge_attr = preprocess_data(dataset[0])
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
     data = dataset[0].to(device)
-        
+    x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
+    
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
 
@@ -219,7 +217,7 @@ if __name__ == '__main__':
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
-    study.optimize(lambda trial: objective(trial, data, dataset, args, device),
+    study.optimize(lambda trial: objective(trial, x, edge_index, edge_attr, data, dataset, args, device),
                    n_trials=args.n_trials)
 
     save_best_trial_to_json(study, args)
