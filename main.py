@@ -15,10 +15,13 @@ from optuna.trial import TrialState
 
 import nn_model
 import load_dataset
-from settings import (SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS,
-                      DATA_DEFAULT_PATH, LOG_INTERVAL,
-                      COMMON_MODEL_PARAMS, EXTRA_MODEL_PARAMS, EXTRA_PARAMS_TYPES,
-                      OPTIM_PARAMS)
+from settings import DATA_DEFAULT_PATH, LOG_INTERVAL
+from hyperparams_utils import (get_common_model_params, add_extra_model_params,
+                               get_optim_params)
+from hyperparams_config import (SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS,
+                                COMMON_MODEL_PARAMS, EXTRA_MODEL_PARAMS,
+                                EXTRA_PARAMS_TYPES, OPTIM_PARAMS)
+
 
 
 def preprocess_data(data):
@@ -35,7 +38,7 @@ def train(x, edge_index, edge_attr, data, model, optimizer):
     loss = nn.CrossEntropyLoss()(output, target)
     loss.backward()
     optimizer.step()
-    return float(loss)
+    return loss
 
 
 def test(x, edge_index, edge_attr, data, model, mask):
@@ -53,38 +56,6 @@ def evaluate(x, edge_index, edge_attr, data, model):
     masks = {'train': data.train_mask, 'val': data.val_mask, 'test': data.test_mask}
     results = {key: test(x, edge_index, edge_attr, data, model, mask) for key, mask in masks.items()}
     return results['train'], results['val'], results['test']
-
-
-def get_common_model_params(trial):
-    model_params = {
-        'activation': trial.suggest_categorical('activation', COMMON_MODEL_PARAMS['activation']),
-        'dropout': trial.suggest_float('dropout', *COMMON_MODEL_PARAMS['dropout']),
-        'n_units': trial.suggest_categorical('n_units', COMMON_MODEL_PARAMS['n_units']),
-        'num_layers': trial.suggest_int('num_layers', *COMMON_MODEL_PARAMS['num_layers'])
-        }
-    return model_params
-
-
-def add_extra_model_params(trial, model_name, model_params):
-    for param in EXTRA_MODEL_PARAMS[model_name]:
-        param_type, param_range = EXTRA_PARAMS_TYPES[param]
-        if param_type == 'categorical':
-            suggest = trial.suggest_categorical(param, param_range)
-        elif param_type == 'int':
-            suggest = trial.suggest_int(param, *param_range)
-        elif param_type == 'float':
-            suggest = trial.suggest_float(param, *param_range)
-        model_params[param] = suggest
-    return model_params
-
-
-def get_optim_params(trial):
-    optim_params = {
-        'learning_rate': trial.suggest_float('learning_rate', *OPTIM_PARAMS['learning_rate'], log=True),
-        'weight_decay': trial.suggest_float('weight_decay', *OPTIM_PARAMS['weight_decay'], log=True),
-        'optimizer': trial.suggest_categorical('optimizer', OPTIM_PARAMS['optimizer']),
-        }
-    return optim_params
 
 
 def initialize_model_and_optimizer(trial, data, dataset, args):
