@@ -2,6 +2,7 @@ import os
 import json
 import datetime
 import argparse
+from functools import partial
 
 import torch
 import torch.nn as nn
@@ -18,10 +19,7 @@ import load_dataset
 from settings import DATA_DEFAULT_PATH, LOG_INTERVAL
 from hyperparams_utils import (get_common_model_params, add_extra_model_params,
                                get_optim_params)
-from hyperparams_config import (SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS,
-                                COMMON_MODEL_PARAMS, EXTRA_MODEL_PARAMS,
-                                EXTRA_PARAMS_TYPES, OPTIM_PARAMS)
-
+from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS
 
 
 def preprocess_data(data):
@@ -146,16 +144,17 @@ def display_results(study, args):
 
 def valid_positive_int(x):
     try:
-        x = int(x)
-        if x <= 0:
-            raise ValueError
-        return x
+        x_int = int(x)
     except ValueError:
-        raise argparse.ArgumentTypeError(f'{x} is not a valid positive integer.')
+        raise argparse.ArgumentTypeError(f'{x} is not a integer.')
+    
+    if x_int <= 0:
+        raise argparse.ArgumentTypeError(f'{x} is not a positive integer.')
+    
+    return x_int
 
 
-if __name__ == '__main__':
-    # Settings
+def parser_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', type=str, choices=SUPPORTED_MODELS,
                         help=f'Choose one of the supported models: {", ".join(SUPPORTED_MODELS)}')
@@ -165,7 +164,11 @@ if __name__ == '__main__':
                         help=f'Choose one of the supported splits: {", ".join(SUPPORTED_SPLITS)}')
     parser.add_argument('--n_trials', type=valid_positive_int, default=100, help='number of trials')
     parser.add_argument('--epochs', type=valid_positive_int, default=100, help='epochs per trial')
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    args = parser_arguments()
     
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
     dataset = load_dataset.load_dataset(path=dataset_path,
@@ -188,8 +191,9 @@ if __name__ == '__main__':
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
-    study.optimize(lambda trial: objective(trial, x, edge_index, edge_attr, data, dataset, args, device),
-                   n_trials=args.n_trials)
+    partial_objective = partial(objective, x=x, edge_index=edge_index, edge_attr=edge_attr,
+                                data=data, dataset=dataset, args=args, device=device)
+    study.optimize(partial_objective, n_trials=args.n_trials)
 
     save_best_trial_to_json(study, args)
     display_results(study, args)
