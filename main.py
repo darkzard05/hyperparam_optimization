@@ -56,11 +56,11 @@ def evaluate(x, edge_index, edge_attr, data, model):
     return results['train'], results['val'], results['test']
 
 
-def initialize_model_and_optimizer(trial, data, dataset, args):
+def initialize_model_and_optimizer(trial, dataset, args):
     # Get model parameters
     model_basic_params = get_common_model_params(trial)
     model_extra_params = add_extra_model_params(trial, args.model, model_basic_params)
-    model_params = {'in_channels': data.num_features,
+    model_params = {'in_channels': dataset[0].num_features,
                     'out_channels': dataset.num_classes,
                     **model_basic_params, **model_extra_params}
     model_class_name = args.model+'Model'
@@ -75,7 +75,7 @@ def initialize_model_and_optimizer(trial, data, dataset, args):
 
 
 def objective(trial, x, edge_index, edge_attr, data, dataset, args, device):
-    model, optimizer = initialize_model_and_optimizer(trial, data, dataset, args)
+    model, optimizer = initialize_model_and_optimizer(trial, dataset, args)
     model.to(device)
     
     best_val_acc, best_test_acc = 0, 0
@@ -167,9 +167,7 @@ def parser_arguments():
     return parser.parse_args()
 
 
-if __name__ == '__main__':
-    args = parser_arguments()
-    
+def main(args):
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
     dataset = load_dataset.load_dataset(path=dataset_path,
                                        name=args.dataset,
@@ -197,3 +195,8 @@ if __name__ == '__main__':
 
     save_best_trial_to_json(study, args)
     display_results(study, args)
+
+
+if __name__ == '__main__':
+    args = parser_arguments()
+    main(args)
