@@ -51,13 +51,13 @@ def test(x, edge_index, edge_attr, data, model, mask):
 
 
 def evaluate(x, edge_index, edge_attr, data, model):
-    masks = {'train': data.train_mask, 'val': data.val_mask, 'test': data.test_mask}
-    results = {key: test(x, edge_index, edge_attr, data, model, mask) for key, mask in masks.items()}
-    return results['train'], results['val'], results['test']
+    masks = [data.train_mask, data.val_mask, data.test_mask]
+    results = [test(x, edge_index, edge_attr, data, model, mask) for mask in masks]
+    return tuple(results)
 
 
-def initialize_model_and_optimizer(trial, dataset, args):
-    # Get model parameters
+def initialize_model_and_optimizer(trial, dataset, args, device):
+    # Initialize model
     model_basic_params = get_common_model_params(trial)
     model_extra_params = add_extra_model_params(trial, args.model, model_basic_params)
     model_params = {'in_channels': dataset[0].num_features,
@@ -65,8 +65,9 @@ def initialize_model_and_optimizer(trial, dataset, args):
                     **model_basic_params, **model_extra_params}
     model_class_name = args.model+'Model'
     model = getattr(nn_model, model_class_name)(**model_params)
+    model.to(device)
     
-    # Get optimizer parameters
+    # Initialize optimizer
     optim_params = get_optim_params(trial)
     optimizer = getattr(optim, optim_params['optimizer'])(model.parameters(),
                                                           lr=optim_params['learning_rate'],
@@ -75,8 +76,7 @@ def initialize_model_and_optimizer(trial, dataset, args):
 
 
 def objective(trial, x, edge_index, edge_attr, data, dataset, args, device):
-    model, optimizer = initialize_model_and_optimizer(trial, dataset, args)
-    model.to(device)
+    model, optimizer = initialize_model_and_optimizer(trial, dataset, args, device)
     
     best_val_acc, best_test_acc = 0, 0
     for epoch in range(1, args.epochs+1):
