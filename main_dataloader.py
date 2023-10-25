@@ -15,7 +15,7 @@ from optuna.pruners import HyperbandPruner
 from optuna.trial import TrialState
 
 import nn_model
-import load_dataset
+from load_dataset import load_dataset, load_train_loader
 from settings import DATA_DEFAULT_PATH, LOG_INTERVAL
 from hyperparams_utils import (get_common_model_params, add_extra_model_params,
                                get_optim_params)
@@ -23,13 +23,12 @@ from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_S
 
 
 def preprocess_data(data):
-    x = (data.x - data.x.mean()) / data.x.std()
-    edge_index = data.edge_index
-    edge_attr = data.edge_attr
-    return x, edge_index, edge_attr
+    data.x = (data.x - data.x.mean()) / data.x.std()
+    return data
 
 
-def train(x, edge_index, edge_attr, data, model, optimizer):
+def train(data, model, optimizer, device):
+    x, edge_index, edge_attr = data.x.to(device), data.edge_index.to(device), data.edge_attr.to(device)
     model.train()
     optimizer.zero_grad()
     output, target = model(x, edge_index, edge_attr)[data.train_mask], data.y[data.train_mask]
@@ -39,7 +38,8 @@ def train(x, edge_index, edge_attr, data, model, optimizer):
     return loss
 
 
-def test(x, edge_index, edge_attr, data, model, mask):
+def test(data, model, mask, device):
+    x, edge_index, edge_attr = data.x.to(device), data.edge_index.to(device), data.edge_attr.to(device)
     model.eval()
     with torch.no_grad():
         output = model(x, edge_index, edge_attr)
@@ -50,9 +50,9 @@ def test(x, edge_index, edge_attr, data, model, mask):
     return float(accuracy)
 
 
-def evaluate(x, edge_index, edge_attr, data, model):
+def evaluate(data, model, device):
     masks = [data.train_mask, data.val_mask, data.test_mask]
-    results = [test(x, edge_index, edge_attr, data, model, mask) for mask in masks]
+    results = [test(data, model, mask, device) for mask in masks]
     return tuple(results)
 
 
@@ -75,26 +75,23 @@ def initialize_model_and_optimizer(trial, dataset, args, device):
     return model, optimizer
 
 
-def objective(trial, dataloader, dataset, args, device):
+def objective(trial, train_loader, data, dataset, args, device):
     model, optimizer = initialize_model_and_optimizer(trial, dataset, args, device)
     
     best_val_acc, best_test_acc = 0, 0
+    
     for epoch in range(1, args.epochs+1):
-        total_loss, total_train_acc, total_val_acc, total_test_acc = 0, 0, 0, 0
-        for batch in dataloader:
-            batch = batch.to(device)
-            x, edge_index, edge_attr = preprocess_data(batch)
-            x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
-            loss = train(x, edge_index, edge_attr, batch, model, optimizer)
-            train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, batch, model)
+        total_loss, total_train_acc = 0, 0
+        for batch in train_loader:
+            batch = preprocess_data(batch)
+            loss = train(batch, model, optimizer, device)
+            train_acc = test(batch, model, batch.train_mask, device)
             total_loss += loss
             total_train_acc += train_acc
-            total_val_acc += val_acc
-            total_test_acc += test_acc
-        loss = total_loss / len(dataloader)
-        train_acc = total_train_acc / len(dataloader)
-        val_acc = total_val_acc / len(dataloader)
-        test_acc = total_test_acc / len(dataloader)
+        loss = total_loss / len(train_loader)
+        train_acc = total_train_acc / len(train_loader)
+        val_acc = test(data, model, data.val_mask, device)
+        test_acc = test(data, model, data.test_mask, device)
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
@@ -182,16 +179,14 @@ def parser_arguments():
 
 def main(args):
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
-    dataset, dataloader = load_dataset.load_dataset(path=dataset_path,
-                                                    name=args.dataset,
-                                                    split=args.split,
-                                                    transform=T.TargetIndegree())
-
-    # x, edge_index, edge_attr = preprocess_data(dataset[0])
+    dataset = load_dataset(path=dataset_path, name=args.dataset, split=args.split,
+                           transform=T.TargetIndegree())
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0].to(device)
-    # x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
+    data = preprocess_data(data)
+    
+    train_loader = load_train_loader(data, [5], batch_size=256)
     
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
@@ -202,7 +197,7 @@ def main(args):
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
-    partial_objective = partial(objective, dataloader=dataloader,
+    partial_objective = partial(objective, train_loader=train_loader, data=data,
                                 dataset=dataset, args=args, device=device)
     study.optimize(partial_objective, n_trials=args.n_trials)
 
