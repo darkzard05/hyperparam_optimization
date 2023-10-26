@@ -22,16 +22,18 @@ from hyperparams_utils import (get_common_model_params, add_extra_model_params,
 from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS
 
 
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "max_split_size_mb:50,garbage_collection_threshold:0.6"
+
 def preprocess_data(data):
     data.x = (data.x - data.x.mean()) / data.x.std()
     return data
 
 
 def train(data, model, optimizer, device):
-    x, edge_index, edge_attr = data.x.to(device), data.edge_index.to(device), data.edge_attr.to(device)
     model.train()
     optimizer.zero_grad()
-    output, target = model(x, edge_index, edge_attr)[data.train_mask], data.y[data.train_mask]
+    output = model(data.x, data.edge_index.to(device), data.edge_attr.to(device))[data.train_mask]
+    target = data.y[data.train_mask]
     loss = nn.CrossEntropyLoss()(output, target)
     loss.backward()
     optimizer.step()
@@ -39,10 +41,9 @@ def train(data, model, optimizer, device):
 
 
 def test(data, model, mask, device):
-    x, edge_index, edge_attr = data.x.to(device), data.edge_index.to(device), data.edge_attr.to(device)
     model.eval()
     with torch.no_grad():
-        output = model(x, edge_index, edge_attr)
+        output = model(data.x, data.edge_index.to(device), data.edge_attr.to(device))
         target = data.y
         pred = output.argmax(dim=1)
         correct = pred[mask] == target[mask]
@@ -183,10 +184,10 @@ def main(args):
                            transform=T.TargetIndegree())
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data = dataset[0].to(device)
+    data = dataset[0].to(device, 'x', 'y')
     data = preprocess_data(data)
     
-    train_loader = load_train_loader(data, [5], batch_size=256)
+    train_loader = load_train_loader(data, [5], batch_size=64)
     
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
