@@ -190,7 +190,7 @@ def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0]
     
-    train_loader = load_train_loader(data, [20, 10], batch_size=4096)
+    train_loader = load_train_loader(data, [5], batch_size=64)
     
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
