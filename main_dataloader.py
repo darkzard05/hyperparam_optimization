@@ -21,18 +21,16 @@ from hyperparams_utils import (get_common_model_params, add_extra_model_params,
                                get_optim_params)
 from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS
 
-
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "max_split_size_mb:50,garbage_collection_threshold:0.6"
-
 def preprocess_data(data):
     data.x = (data.x - data.x.mean()) / data.x.std()
     return data
 
 
 def train(data, model, optimizer, device):
+    data = data.to(device)
     model.train()
     optimizer.zero_grad()
-    output = model(data.x, data.edge_index.to(device), data.edge_attr.to(device))[data.train_mask]
+    output = model(data.x, data.edge_index, data.edge_attr)[data.train_mask]
     target = data.y[data.train_mask]
     loss = nn.CrossEntropyLoss()(output, target)
     loss.backward()
@@ -41,9 +39,10 @@ def train(data, model, optimizer, device):
 
 
 def test(data, model, mask, device):
+    data = data.to(device)
     model.eval()
     with torch.no_grad():
-        output = model(data.x, data.edge_index.to(device), data.edge_attr.to(device))
+        output = model(data.x, data.edge_index, data.edge_attr)
         target = data.y
         pred = output.argmax(dim=1)
         correct = pred[mask] == target[mask]
@@ -65,8 +64,7 @@ def initialize_model_and_optimizer(trial, dataset, args, device):
                     'out_channels': dataset.num_classes,
                     **model_basic_params, **model_extra_params}
     model_class_name = args.model+'Model'
-    model = getattr(nn_model, model_class_name)(**model_params)
-    model.to(device)
+    model = getattr(nn_model, model_class_name)(**model_params).to(device)
     
     # Initialize optimizer
     optim_params = get_optim_params(trial)
@@ -83,17 +81,23 @@ def objective(trial, train_loader, data, dataset, args, device):
     
     for epoch in range(1, args.epochs+1):
         total_loss, total_train_acc = 0, 0
+        total_val_acc, total_test_acc = 0, 0
+        
         for batch in train_loader:
             batch = preprocess_data(batch)
             loss = train(batch, model, optimizer, device)
             train_acc = test(batch, model, batch.train_mask, device)
+            val_acc = test(batch, model, batch.val_mask, device)
+            test_acc = test(batch, model, batch.test_mask, device)
             total_loss += loss
             total_train_acc += train_acc
+            total_val_acc += val_acc
+            total_test_acc += test_acc
         loss = total_loss / len(train_loader)
         train_acc = total_train_acc / len(train_loader)
-        val_acc = test(data, model, data.val_mask, device)
-        test_acc = test(data, model, data.test_mask, device)
-        
+        val_acc = total_val_acc / len(train_loader)
+        test_acc = total_test_acc / len(train_loader)
+                
         if best_val_acc < val_acc:
             best_val_acc = val_acc
             best_test_acc = test_acc
@@ -125,7 +129,7 @@ def save_best_trial_to_json(study, args):
             }
         }
     
-    filename = f'best_trial_{args.model}_{args.split}_{args.dataset}.json'
+    filename = f'best_trial_{args.model}_{args.dataset}.json'
     
     with open(filename, 'w') as f:
         json.dump(result, f)
@@ -143,7 +147,7 @@ def display_results(study, args):
       Number of pruned trials: {len(pruned_trials)}
       Number of complete trials: {len(complete_trials)}
     Model name: {args.model}
-    Dataset name(split type): {args.dataset}({args.split})
+    Dataset name(split type): {args.dataset}
     Best trial:
       Value: {trial.value:.4f}
     Parameters:''')
@@ -184,10 +188,9 @@ def main(args):
                            transform=T.TargetIndegree())
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data = dataset[0].to(device, 'x', 'y')
-    data = preprocess_data(data)
+    data = dataset[0]
     
-    train_loader = load_train_loader(data, [5], batch_size=64)
+    train_loader = load_train_loader(data, [20, 10], batch_size=4096)
     
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
