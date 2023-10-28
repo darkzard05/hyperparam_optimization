@@ -74,7 +74,7 @@ def initialize_model_and_optimizer(trial, dataset, args, device):
     return model, optimizer
 
 
-def objective(trial, train_loader, data, dataset, args, device):
+def objective(trial, train_loader, dataset, args, device):
     model, optimizer = initialize_model_and_optimizer(trial, dataset, args, device)
     
     best_val_acc, best_test_acc = 0, 0
@@ -86,9 +86,7 @@ def objective(trial, train_loader, data, dataset, args, device):
         for batch in train_loader:
             batch = preprocess_data(batch)
             loss = train(batch, model, optimizer, device)
-            train_acc = test(batch, model, batch.train_mask, device)
-            val_acc = test(batch, model, batch.val_mask, device)
-            test_acc = test(batch, model, batch.test_mask, device)
+            train_acc, val_acc, test_acc = evaluate(batch, model, device)
             total_loss += loss
             total_train_acc += train_acc
             total_val_acc += val_acc
@@ -179,6 +177,8 @@ def parser_arguments():
                         help=f'Choose one of the supported splits: {", ".join(SUPPORTED_SPLITS)}')
     parser.add_argument('--n_trials', type=valid_positive_int, default=100, help='number of trials')
     parser.add_argument('--epochs', type=valid_positive_int, default=100, help='epochs per trial')
+    parser.add_argument('--batch_size', type=int, default=64, help='set data per iteration')
+    parser.add_argument('--num_neighbors', type=list, default=[10, 20], help='neighbors sampled in graph layers')
     return parser.parse_args()
 
 
@@ -190,9 +190,10 @@ def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0]
     
-    train_loader = load_train_loader(data, [5], batch_size=64)
+    train_loader = load_train_loader(data=data, num_neighbors=args.num_neighbors,
+                                     batch_size=args.batch_size)
     
-    study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
+    study_name = args.dataset + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
 
     study = optuna.create_study(storage=storage_name,
@@ -201,7 +202,7 @@ def main(args):
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
-    partial_objective = partial(objective, train_loader=train_loader, data=data,
+    partial_objective = partial(objective, train_loader=train_loader,
                                 dataset=dataset, args=args, device=device)
     study.optimize(partial_objective, n_trials=args.n_trials)
 
