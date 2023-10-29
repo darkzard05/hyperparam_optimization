@@ -20,7 +20,7 @@ def get_activation(activation):
 
 
 def build_layers(model, in_channels, out_channels, n_units, num_layers,
-                 heads=1, multi_factor=1, **kwargs):
+                 multi_factor=1, **kwargs):
     model_list = ModuleList()
     for layer in range(num_layers):
         current_out_channels = out_channels if layer == num_layers - 1 else n_units * multi_factor
@@ -61,7 +61,7 @@ class APPNPModel(BaseModel):
         
         self.num_layers = num_layers
         self.model_list = build_layers(Linear, self.in_channels, self.out_channels,
-                                           self.n_units, self.num_layers)
+                                       self.n_units, self.num_layers)
         self.prop = APPNP(K=self.K, alpha=self.alpha)
         self.reset_parameters()
     
@@ -89,8 +89,8 @@ class SplineconvModel(BaseModel):
 
         self.num_layers = num_layers
         self.model_list = build_layers(SplineConv, self.in_channels, self.out_channels,
-                                           self.n_units, self.num_layers,
-                                           dim=1, kernel_size=self.kernel_size)
+                                       self.n_units, self.num_layers,
+                                       dim=1, kernel_size=self.kernel_size)
         self.reset_parameters()
 
     def forward(self,
@@ -116,8 +116,8 @@ class GATModel(BaseModel):
         
         self.num_layers = num_layers
         self.model_list = build_layers(GATConv, self.in_channels, self.out_channels,
-                                           self.n_units, self.num_layers, heads=self.heads,
-                                           dropout=self.dropout, multi_factor=self.heads)
+                                       self.n_units, self.num_layers, heads=self.heads,
+                                       dropout=self.dropout, multi_factor=self.heads)
         self.reset_parameters()
     
     def forward(self,
