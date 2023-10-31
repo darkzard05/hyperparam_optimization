@@ -10,8 +10,8 @@ def load_dataset(path, name,
         
     return Planetoid(root=path, name=name, split=split, transform=transform)
 
-def load_train_loader(data, num_neighbors, batch_size):
+def load_train_loader(data, num_neighbors, batch_size, num_workers=4):
     kwargs = {'num_neighbors': num_neighbors, 'batch_size': batch_size,
-              'pin_memory': True}
+              'pin_memory': True, 'num_workers': num_workers, 'shuffle': True}
     train_loader = NeighborLoader(data=data, input_nodes=data.train_mask, **kwargs)
     return train_loader
