@@ -169,7 +169,7 @@ def parser_arguments():
 
 def main(args):
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
-    dataset = load_dataset.load_dataset(path=dataset_path,
+    dataset = load_dataset.get_dataset(path=dataset_path,
                                        name=args.dataset,
                                        split=args.split,
                                        transform=T.TargetIndegree())
