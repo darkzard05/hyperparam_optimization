@@ -15,7 +15,7 @@ from optuna.pruners import HyperbandPruner
 from optuna.trial import TrialState
 
 import nn_model
-from load_dataset import load_dataset, load_train_loader
+from load_dataset import get_dataset, get_train_loader
 from settings import DATA_DEFAULT_PATH, LOG_INTERVAL
 from hyperparams_utils import (get_common_model_params, add_extra_model_params,
                                get_optim_params)
@@ -58,11 +58,11 @@ def evaluate(data, model, device):
 
 def initialize_model_and_optimizer(trial, dataset, args, device):
     # Initialize model
-    model_basic_params = get_common_model_params(trial)
-    model_extra_params = add_extra_model_params(trial, args.model, model_basic_params)
+    basic_params = get_common_model_params(trial)
+    extra_params = add_extra_model_params(trial, args.model, basic_params)
     model_params = {'in_channels': dataset[0].num_features,
                     'out_channels': dataset.num_classes,
-                    **model_basic_params, **model_extra_params}
+                    **basic_params, **extra_params}
     model_class_name = args.model+'Model'
     model = getattr(nn_model, model_class_name)(**model_params).to(device)
     
@@ -184,13 +184,13 @@ def parser_arguments():
 
 def main(args):
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
-    dataset = load_dataset(path=dataset_path, name=args.dataset, split=args.split,
+    dataset = get_dataset(path=dataset_path, name=args.dataset, split=args.split,
                            transform=T.TargetIndegree())
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0]
     
-    train_loader = load_train_loader(data=data, num_neighbors=args.num_neighbors,
+    train_loader = get_train_loader(data=data, num_neighbors=args.num_neighbors,
                                      batch_size=args.batch_size)
     
     study_name = args.dataset + '_' + args.model + '_study'
