@@ -3,10 +3,10 @@ SUPPORTED_DATASETS = ['Cora', 'PubMed', 'CiteSeer', 'Reddit']
 SUPPORTED_SPLITS = ['public', 'random', 'full', 'geom-gcn']
 
 COMMON_MODEL_PARAMS = {
-    'activation': ['relu', 'leakyrelu', 'elu'],
+    'activation': ['relu', 'leakyrelu', 'I', 'elu', 'tanh', 'prelu'],
     'dropout': [0.0, 0.7],
     'n_units': [2** i for i in range(2, 8)],
-    'num_layers': [1, 5]    
+    'num_layers': [1, 5]
 }
 
 EXTRA_MODEL_PARAMS = {

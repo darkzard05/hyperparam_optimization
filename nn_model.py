@@ -1,5 +1,5 @@
 import torch
-from torch import Tensor
+from torch import nn, Tensor
 from torch.nn import ModuleList
 import torch.nn.functional as F
 from torch_geometric.nn import Linear, APPNP, SplineConv, GATConv
@@ -7,9 +7,12 @@ from torch_geometric.typing import Adj, OptTensor
 
 
 ACTIVATION_FUNCTIONS = {
-    'relu': torch.nn.ReLU(),
-    'leakyrelu': torch.nn.LeakyReLU(),
-    'elu': torch.nn.ELU()
+    'relu': nn.ReLU(),
+    'leakyrelu': nn.LeakyReLU(negative_slope=0.2),
+    'I': nn.LeakyReLU(negative_slope=1),
+    'elu': nn.ELU(),
+    'tanh': nn.Tanh(),
+    'prelu': nn.PReLU()
 }
 
 
@@ -42,10 +45,12 @@ class BaseModel(torch.nn.Module):
         self.n_units = n_units
         self.dropout = dropout
         self.activation = get_activation(activation)
+        self.model_list = None
         
     def reset_parameters(self):
-        for layer in self.model_list:
-            layer.reset_parameters()
+        if self.model_list != None:
+            for layer in self.model_list:
+                layer.reset_parameters()
 
 
 class APPNPModel(BaseModel):
