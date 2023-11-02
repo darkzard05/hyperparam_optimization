@@ -177,6 +177,10 @@ def main(args):
     x, edge_index, edge_attr = preprocess_data(dataset[0])
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    
     data = dataset[0].to(device)
     x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
     

@@ -91,11 +91,12 @@ def objective(trial, train_loader, dataset, args, device):
             total_train_acc += train_acc
             total_val_acc += val_acc
             total_test_acc += test_acc
+                        
         loss = total_loss / len(train_loader)
         train_acc = total_train_acc / len(train_loader)
         val_acc = total_val_acc / len(train_loader)
         test_acc = total_test_acc / len(train_loader)
-                
+
         if best_val_acc < val_acc:
             best_val_acc = val_acc
             best_test_acc = test_acc
@@ -186,9 +187,12 @@ def main(args):
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
     dataset = get_dataset(path=dataset_path, name=args.dataset, split=args.split,
                            transform=T.TargetIndegree())
+    data = dataset[0]
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data = dataset[0]
+    
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     
     train_loader = get_train_loader(data=data, num_neighbors=args.num_neighbors,
                                      batch_size=args.batch_size)
