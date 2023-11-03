@@ -79,6 +79,10 @@ def objective(trial, x, edge_index, edge_attr, data, dataset, args, device):
     model, optimizer = initialize_model_and_optimizer(trial, dataset, args, device)
     
     best_val_acc, best_test_acc = 0, 0
+    
+    early_stopping_counter = 0
+    early_stopping_patience = 10
+    
     for epoch in range(1, args.epochs+1):
         loss = train(x, edge_index, edge_attr, data, model, optimizer)
         train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, data, model)
@@ -86,6 +90,9 @@ def objective(trial, x, edge_index, edge_attr, data, dataset, args, device):
         if best_val_acc < val_acc:
             best_val_acc = val_acc
             best_test_acc = test_acc
+            early_stopping_counter = 0
+        else:
+            early_stopping_counter += 1
             
         if epoch % LOG_INTERVAL == 0 or best_val_acc == val_acc:
             log_message = f'epoch [{epoch}/{args.epochs}], loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}'
@@ -93,7 +100,7 @@ def objective(trial, x, edge_index, edge_attr, data, dataset, args, device):
             
         trial.report(val_acc, epoch)
         
-        if trial.should_prune():
+        if trial.should_prune() or early_stopping_counter >= early_stopping_patience:
             raise optuna.exceptions.TrialPruned()
     
     return best_test_acc
@@ -177,9 +184,6 @@ def main(args):
     x, edge_index, edge_attr = preprocess_data(dataset[0])
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
     
     data = dataset[0].to(device)
     x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
