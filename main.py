@@ -2,6 +2,7 @@ import os
 import json
 import datetime
 import argparse
+from typing import Tuple
 from functools import partial
 
 import torch
@@ -22,14 +23,17 @@ from hyperparams_utils import (get_common_model_params, add_extra_model_params,
 from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS
 
 
-def preprocess_data(data):
+def preprocess_data(data) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     x = (data.x - data.x.mean()) / data.x.std()
     edge_index = data.edge_index
     edge_attr = data.edge_attr
     return x, edge_index, edge_attr
 
 
-def train(x, edge_index, edge_attr, data, model, optimizer):
+def train(x: torch.Tensor,
+          edge_index: torch.Tensor,
+          edge_attr: torch.Tensor,
+          data, model, optimizer) -> torch.Tensor:
     model.train()
     optimizer.zero_grad()
     output, target = model(x, edge_index, edge_attr)[data.train_mask], data.y[data.train_mask]
@@ -39,7 +43,10 @@ def train(x, edge_index, edge_attr, data, model, optimizer):
     return loss
 
 
-def test(x, edge_index, edge_attr, data, model, mask):
+def test(x: torch.Tensor,
+         edge_index: torch.Tensor,
+         edge_attr: torch.Tensor,
+         data, model, mask) -> torch.Tensor:
     model.eval()
     with torch.no_grad():
         output = model(x, edge_index, edge_attr)
@@ -47,16 +54,21 @@ def test(x, edge_index, edge_attr, data, model, mask):
         pred = output.argmax(dim=1)
         correct = pred[mask] == target[mask]
         accuracy = correct.sum() / mask.sum()
-    return float(accuracy)
+    return accuracy
 
 
-def evaluate(x, edge_index, edge_attr, data, model):
+def evaluate(x: torch.Tensor,
+             edge_index: torch.Tensor,
+             edge_attr: torch.Tensor,
+             data, model) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     masks = [data.train_mask, data.val_mask, data.test_mask]
     results = [test(x, edge_index, edge_attr, data, model, mask) for mask in masks]
     return tuple(results)
 
 
-def initialize_model_and_optimizer(trial, dataset, args, device):
+def initialize_model_and_optimizer(trial, dataset,
+                                   args: argparse.Namespace,
+                                   device: torch.device):
     # Initialize model
     model_basic_params = get_common_model_params(trial)
     model_extra_params = add_extra_model_params(trial, args.model, model_basic_params)
@@ -75,7 +87,12 @@ def initialize_model_and_optimizer(trial, dataset, args, device):
     return model, optimizer
 
 
-def objective(trial, x, edge_index, edge_attr, data, dataset, args, device):
+def objective(trial, data, dataset,
+              x: torch.Tensor,
+              edge_index: torch.Tensor,
+              edge_attr: torch.Tensor,
+              args: argparse.Namespace,
+              device: torch.device) -> torch.Tensor:
     model, optimizer = initialize_model_and_optimizer(trial, dataset, args, device)
     
     best_val_acc, best_test_acc = 0, 0
@@ -102,11 +119,12 @@ def objective(trial, x, edge_index, edge_attr, data, dataset, args, device):
         
         if trial.should_prune() or early_stopping_counter >= early_stopping_patience:
             raise optuna.exceptions.TrialPruned()
-    
+        
     return best_test_acc
 
 
-def save_best_trial_to_json(study, args):
+def save_best_trial_to_json(study,
+                            args: argparse.Namespace):
     best_trial = study.best_trial
     
     result = {
@@ -127,7 +145,8 @@ def save_best_trial_to_json(study, args):
         json.dump(result, f)
 
 
-def display_results(study, args):
+def display_results(study,
+                    args: argparse.Namespace):
     pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
     
@@ -149,7 +168,7 @@ def display_results(study, args):
         print(f'      {key}: {value_str}')
     
 
-def valid_positive_int(x):
+def valid_positive_int(x) -> int:
     try:
         x_int = int(x)
     except ValueError:
@@ -174,7 +193,7 @@ def parser_arguments():
     return parser.parse_args()
 
 
-def main(args):
+def main(args: argparse.Namespace):
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
     dataset = load_dataset.get_dataset(path=dataset_path,
                                        name=args.dataset,
@@ -197,8 +216,9 @@ def main(args):
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
-    partial_objective = partial(objective, x=x, edge_index=edge_index, edge_attr=edge_attr,
-                                data=data, dataset=dataset, args=args, device=device)
+    partial_objective = partial(objective, data=data, dataset=dataset,
+                                x=x, edge_index=edge_index, edge_attr=edge_attr,
+                                args=args, device=device)
     study.optimize(partial_objective, n_trials=args.n_trials)
 
     save_best_trial_to_json(study, args)
