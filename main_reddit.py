@@ -21,6 +21,7 @@ from hyperparams_utils import (get_common_model_params, add_extra_model_params,
                                get_optim_params)
 from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS
 
+
 def preprocess_data(data):
     data.x = (data.x - data.x.mean()) / data.x.std()
     return data
@@ -79,6 +80,9 @@ def objective(trial, train_loader, dataset, args, device):
     
     best_val_acc, best_test_acc = 0, 0
     
+    early_stopping_counter = 0
+    early_stopping_patience = 10
+    
     for epoch in range(1, args.epochs+1):
         total_loss, total_train_acc = 0, 0
         total_val_acc, total_test_acc = 0, 0
@@ -96,18 +100,21 @@ def objective(trial, train_loader, dataset, args, device):
         train_acc = total_train_acc / len(train_loader)
         val_acc = total_val_acc / len(train_loader)
         test_acc = total_test_acc / len(train_loader)
-
+        
         if best_val_acc < val_acc:
             best_val_acc = val_acc
             best_test_acc = test_acc
-            
+            early_stopping_counter = 0
+        else:
+            early_stopping_counter += 1
+        
         if epoch % LOG_INTERVAL == 0 or best_val_acc == val_acc:
             log_message = f'epoch [{epoch}/{args.epochs}], loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}'
             print(log_message)
             
         trial.report(val_acc, epoch)
         
-        if trial.should_prune():
+        if trial.should_prune() or early_stopping_counter >= early_stopping_patience:
             raise optuna.exceptions.TrialPruned()
     
     return best_test_acc
@@ -190,9 +197,6 @@ def main(args):
     data = dataset[0]
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
     
     train_loader = get_train_loader(data=data, num_neighbors=args.num_neighbors,
                                      batch_size=args.batch_size)
