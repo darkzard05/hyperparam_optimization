@@ -200,13 +200,11 @@ def main(args: argparse.Namespace):
                                        split=args.split,
                                        transform=T.TargetIndegree())
     
-    x, edge_index, edge_attr = preprocess_data(dataset[0])
-    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     data = dataset[0].to(device)
-    x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
-    
+    x, edge_index, edge_attr = preprocess_data(data)
+
     study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
 
