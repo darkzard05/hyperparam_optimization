@@ -16,7 +16,7 @@ from optuna.pruners import HyperbandPruner
 from optuna.trial import TrialState
 
 import nn_model
-import load_dataset
+from load_dataset import get_dataset, get_train_loader
 from settings import DATA_DEFAULT_PATH, LOG_INTERVAL
 from hyperparams_utils import (get_common_model_params, add_extra_model_params,
                                get_optim_params)
@@ -33,10 +33,11 @@ def preprocess_data(data) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 def train(x: torch.Tensor,
           edge_index: torch.Tensor,
           edge_attr: torch.Tensor,
-          data, model, optimizer) -> torch.Tensor:
+          data, model, optimizer, device) -> torch.Tensor:
     model.train()
     optimizer.zero_grad()
-    output, target = model(x, edge_index, edge_attr)[data.train_mask], data.y[data.train_mask]
+    output = model(x.to(device), edge_index.to(device), edge_attr.to(device))[data.train_mask]
+    target = data.y.to(device)[data.train_mask]
     loss = nn.CrossEntropyLoss()(output, target)
     loss.backward()
     optimizer.step()
@@ -46,11 +47,11 @@ def train(x: torch.Tensor,
 def test(x: torch.Tensor,
          edge_index: torch.Tensor,
          edge_attr: torch.Tensor,
-         data, model, mask) -> torch.Tensor:
+         data, model, mask, device) -> torch.Tensor:
     model.eval()
     with torch.no_grad():
-        output = model(x, edge_index, edge_attr)
-        target = data.y
+        output = model(x.to(device), edge_index.to(device), edge_attr.to(device))
+        target = data.y.to(device)
         pred = output.argmax(dim=1)
         correct = pred[mask] == target[mask]
         accuracy = correct.sum() / mask.sum()
@@ -60,9 +61,9 @@ def test(x: torch.Tensor,
 def evaluate(x: torch.Tensor,
              edge_index: torch.Tensor,
              edge_attr: torch.Tensor,
-             data, model) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+             data, model, device) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     masks = [data.train_mask, data.val_mask, data.test_mask]
-    results = [test(x, edge_index, edge_attr, data, model, mask) for mask in masks]
+    results = [test(x, edge_index, edge_attr, data, model, mask, device) for mask in masks]
     return tuple(results)
 
 
@@ -87,7 +88,7 @@ def initialize_model_and_optimizer(trial, dataset,
     return model, optimizer
 
 
-def objective(trial, data, dataset,
+def objective(trial, train_loader, data, dataset,
               x: torch.Tensor,
               edge_index: torch.Tensor,
               edge_attr: torch.Tensor,
@@ -101,8 +102,27 @@ def objective(trial, data, dataset,
     early_stopping_patience = 10
     
     for epoch in range(1, args.epochs+1):
-        loss = train(x, edge_index, edge_attr, data, model, optimizer)
-        train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, data, model)
+        if args.dataset_type == 'Reddit':
+            total_loss, total_train_acc = 0, 0
+            total_val_acc, total_test_acc = 0, 0
+            
+            for batch in train_loader:
+                x, edge_index, edge_attr = preprocess_data(batch)
+                x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
+                loss = train(x, edge_index, edge_attr, batch, model, optimizer, device)
+                train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, batch, model, device)
+                total_loss += loss
+                total_train_acc += train_acc
+                total_val_acc += val_acc
+                total_test_acc += test_acc
+                            
+            loss = total_loss / len(train_loader)
+            train_acc = total_train_acc / len(train_loader)
+            val_acc = total_val_acc / len(train_loader)
+            test_acc = total_test_acc / len(train_loader)
+        else:
+            loss = train(x, edge_index, edge_attr, data, model, optimizer)
+            train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, data, model)
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
@@ -182,30 +202,43 @@ def valid_positive_int(x) -> int:
 
 def parser_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, choices=SUPPORTED_MODELS,
-                        help=f'Choose one of the supported models: {", ".join(SUPPORTED_MODELS)}')
-    parser.add_argument('--dataset', type=str, choices=SUPPORTED_DATASETS,
-                        help=f'Choose one of the supported datasets: {", ".join(SUPPORTED_DATASETS)}')
-    parser.add_argument('--split', type=str, choices=SUPPORTED_SPLITS, default='public',
-                        help=f'Choose one of the supported splits: {", ".join(SUPPORTED_SPLITS)}')
-    parser.add_argument('--n_trials', type=valid_positive_int, default=100, help='number of trials')
-    parser.add_argument('--epochs', type=valid_positive_int, default=100, help='epochs per trial')
+    
+    subparsers = parser.add_subparsers(dest='dataset_type', title='Reddit or Planetoid')
+    
+    parser_reddit = subparsers.add_parser('Reddit', description='Reddit')
+    parser_planetoid = subparsers.add_parser('Planetoid', description='Planetoid')
+    
+    for p in [parser_reddit, parser_planetoid]:
+        p.add_argument('--model', type=str, choices=SUPPORTED_MODELS,
+                            help=f'Choose one of the supported models: {", ".join(SUPPORTED_MODELS)}')
+        p.add_argument('--n_trials', type=valid_positive_int, default=100, help='number of trials')
+        p.add_argument('--epochs', type=valid_positive_int, default=100, help='epochs per trial')
+    
+    parser_planetoid.add_argument('--dataset', type=str, choices=SUPPORTED_DATASETS,
+                                  help=f'Choose one of the supported datasets: {", ".join(SUPPORTED_DATASETS)}')
+    # parser_planetoid.add_argument('--split', type=str, choices=SUPPORTED_SPLITS, default='public',
+    #                               help=f'Choose one of the supported splits: {", ".join(SUPPORTED_SPLITS)}')
+    
+    parser_reddit.add_argument('--batch_size', type=int, default=64, help='set data per iteration')
+    parser_reddit.add_argument('--num_neighbors', type=list, default=[10, 20], help='neighbors sampled in graph layers')
     return parser.parse_args()
 
 
 def main(args: argparse.Namespace):
-    dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
-    dataset = load_dataset.get_dataset(path=dataset_path,
-                                       name=args.dataset,
-                                       split=args.split,
-                                       transform=T.TargetIndegree())
-    
+    dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset_type if args.dataset_type == 'Reddit'
+                                else args.dataset)
+    dataset = get_dataset(path=dataset_path, name=args.dataset_type if args.dataset_type == 'Reddit'
+                          else args.dataset, transform=T.TargetIndegree())
+        
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    data = dataset[0].to(device)
+    data = dataset[0]
     x, edge_index, edge_attr = preprocess_data(data)
 
-    study_name = args.dataset + f'({args.split})' + '_' + args.model + '_study'
+    if args.dataset_type == 'Reddit':
+        train_loader = get_train_loader(data=data, num_neighbors=args.num_neighbors,
+                                        batch_size=args.batch_size)
+
+    study_name = args.dataset_type if args.dataset_type == 'Reddit' else args.dataset + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
 
     study = optuna.create_study(storage=storage_name,
@@ -214,7 +247,9 @@ def main(args: argparse.Namespace):
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
-    partial_objective = partial(objective, data=data, dataset=dataset,
+   
+    partial_objective = partial(objective, train_loader=train_loader,
+                                data=data, dataset=dataset,
                                 x=x, edge_index=edge_index, edge_attr=edge_attr,
                                 args=args, device=device)
     study.optimize(partial_objective, n_trials=args.n_trials)
