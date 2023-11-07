@@ -121,8 +121,8 @@ def objective(trial, train_loader, data, dataset,
             val_acc = total_val_acc / len(train_loader)
             test_acc = total_test_acc / len(train_loader)
         else:
-            loss = train(x, edge_index, edge_attr, data, model, optimizer)
-            train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, data, model)
+            loss = train(x, edge_index, edge_attr, data, model, optimizer, device)
+            train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, data, model, device)
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
@@ -150,8 +150,7 @@ def save_best_trial_to_json(study,
     result = {
         'date_time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'model_name': args.model,
-        'dataset_name': args.dataset,
-        'dataset_split_type': args.split,
+        'dataset_name': args.dataset_type if args.dataset_type == 'Reddit' else args.dataset,
         'best_trials': {
             'params': best_trial.params,
             'value': best_trial.value,
@@ -159,7 +158,7 @@ def save_best_trial_to_json(study,
             }
         }
     
-    filename = f'best_trial_{args.model}_{args.split}_{args.dataset}.json'
+    filename = f'best_trial_{args.model}_{args.dataset_type if args.dataset_type == "Reddit" else args.dataset}.json'
     
     with open(filename, 'w') as f:
         json.dump(result, f)
@@ -178,7 +177,7 @@ def display_results(study,
       Number of pruned trials: {len(pruned_trials)}
       Number of complete trials: {len(complete_trials)}
     Model name: {args.model}
-    Dataset name(split type): {args.dataset}({args.split})
+    Dataset name: {args.dataset_type if args.dataset_type == 'Reddit' else args.dataset}
     Best trial:
       Value: {trial.value:.4f}
     Parameters:''')
@@ -211,16 +210,14 @@ def parser_arguments():
     for p in [parser_reddit, parser_planetoid]:
         p.add_argument('--model', type=str, choices=SUPPORTED_MODELS,
                             help=f'Choose one of the supported models: {", ".join(SUPPORTED_MODELS)}')
-        p.add_argument('--n_trials', type=valid_positive_int, default=100, help='number of trials')
-        p.add_argument('--epochs', type=valid_positive_int, default=100, help='epochs per trial')
+        p.add_argument('--n_trials', type=valid_positive_int, help='number of trials')
+        p.add_argument('--epochs', type=valid_positive_int, help='epochs per trial')
     
     parser_planetoid.add_argument('--dataset', type=str, choices=SUPPORTED_DATASETS,
                                   help=f'Choose one of the supported datasets: {", ".join(SUPPORTED_DATASETS)}')
-    # parser_planetoid.add_argument('--split', type=str, choices=SUPPORTED_SPLITS, default='public',
-    #                               help=f'Choose one of the supported splits: {", ".join(SUPPORTED_SPLITS)}')
     
-    parser_reddit.add_argument('--batch_size', type=int, default=64, help='set data per iteration')
-    parser_reddit.add_argument('--num_neighbors', type=list, default=[10, 20], help='neighbors sampled in graph layers')
+    parser_reddit.add_argument('--batch_size', type=int, help='set data per iteration')
+    parser_reddit.add_argument('--num_neighbors', type=eval, help='neighbors sampled in graph layers')
     return parser.parse_args()
 
 
@@ -233,7 +230,7 @@ def main(args: argparse.Namespace):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0]
     x, edge_index, edge_attr = preprocess_data(data)
-
+    
     if args.dataset_type == 'Reddit':
         train_loader = get_train_loader(data=data, num_neighbors=args.num_neighbors,
                                         batch_size=args.batch_size)
@@ -248,10 +245,12 @@ def main(args: argparse.Namespace):
                                 direction='maximize',
                                 load_if_exists=True)
    
-    partial_objective = partial(objective, train_loader=train_loader,
+    partial_objective = partial(objective,
+                                train_loader=train_loader if args.dataset_type == 'Reddit' else None,
                                 data=data, dataset=dataset,
                                 x=x, edge_index=edge_index, edge_attr=edge_attr,
                                 args=args, device=device)
+            
     study.optimize(partial_objective, n_trials=args.n_trials)
 
     save_best_trial_to_json(study, args)
