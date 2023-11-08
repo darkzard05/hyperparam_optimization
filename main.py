@@ -12,7 +12,7 @@ import torch_geometric.transforms as T
 
 import optuna
 from optuna.samplers import TPESampler
-from optuna.pruners import HyperbandPruner
+from optuna.pruners import HyperbandPruner, MedianPruner, PercentilePruner
 from optuna.trial import TrialState
 
 import nn_model
@@ -96,10 +96,9 @@ def objective(trial, train_loader, data, dataset,
               device: torch.device) -> torch.Tensor:
     model, optimizer = initialize_model_and_optimizer(trial, dataset, args, device)
     
-    best_val_acc, best_test_acc = 0, 0
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10, verbose=True)
     
-    early_stopping_counter = 0
-    early_stopping_patience = 10
+    best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(1, args.epochs+1):
         if args.dataset_type == 'Reddit':
@@ -111,6 +110,7 @@ def objective(trial, train_loader, data, dataset,
                 x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
                 loss = train(x, edge_index, edge_attr, batch, model, optimizer, device)
                 train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, batch, model, device)
+                scheduler.step(loss)
                 total_loss += loss
                 total_train_acc += train_acc
                 total_val_acc += val_acc
@@ -123,13 +123,11 @@ def objective(trial, train_loader, data, dataset,
         else:
             loss = train(x, edge_index, edge_attr, data, model, optimizer, device)
             train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, data, model, device)
+            scheduler.step(loss)
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
             best_test_acc = test_acc
-            early_stopping_counter = 0
-        else:
-            early_stopping_counter += 1
             
         if epoch % LOG_INTERVAL == 0 or best_val_acc == val_acc:
             log_message = f'epoch [{epoch}/{args.epochs}], loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}'
@@ -137,7 +135,7 @@ def objective(trial, train_loader, data, dataset,
             
         trial.report(val_acc, epoch)
         
-        if trial.should_prune() or early_stopping_counter >= early_stopping_patience:
+        if trial.should_prune():
             raise optuna.exceptions.TrialPruned()
         
     return best_test_acc
@@ -240,7 +238,7 @@ def main(args: argparse.Namespace):
 
     study = optuna.create_study(storage=storage_name,
                                 sampler=TPESampler(),
-                                pruner=HyperbandPruner(),
+                                pruner=MedianPruner(),
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
