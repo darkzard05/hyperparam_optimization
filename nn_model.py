@@ -45,13 +45,10 @@ class BaseModel(torch.nn.Module):
         self.n_units = n_units
         self.dropout = dropout
         self.activation = get_activation(activation)
-        self.model_list = None
         
     def reset_parameters(self):
-        if self.model_list != None:
-            for layer in self.model_list:
-                layer.reset_parameters()
-
+        for layer in self.model_list:
+            layer.reset_parameters()
 
 class APPNPModel(BaseModel):
     def __init__(self,
@@ -63,8 +60,8 @@ class APPNPModel(BaseModel):
         super().__init__(*args, **kwargs)
         self.K = K
         self.alpha = alpha
-        
         self.num_layers = num_layers
+        
         self.model_list = build_layers(Linear, self.in_channels, self.out_channels,
                                        self.n_units, self.num_layers)
         self.prop = APPNP(K=self.K, alpha=self.alpha)
@@ -91,8 +88,8 @@ class SplineconvModel(BaseModel):
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.kernel_size = kernel_size
-
         self.num_layers = num_layers
+        
         self.model_list = build_layers(SplineConv, self.in_channels, self.out_channels,
                                        self.n_units, self.num_layers,
                                        dim=1, kernel_size=self.kernel_size)
@@ -118,8 +115,8 @@ class GATModel(BaseModel):
                  ):
         super().__init__(*args, **kwargs)
         self.heads = heads
-        
         self.num_layers = num_layers
+        
         self.model_list = build_layers(GATConv, self.in_channels, self.out_channels,
                                        self.n_units, self.num_layers, heads=self.heads,
                                        dropout=self.dropout, multi_factor=self.heads)
