@@ -202,20 +202,20 @@ def parser_arguments():
     
     subparsers = parser.add_subparsers(dest='dataset_type', title='Reddit or Planetoid')
     
-    parser_reddit = subparsers.add_parser('Reddit', description='Reddit')
-    parser_planetoid = subparsers.add_parser('Planetoid', description='Planetoid')
+    subparser_reddit = subparsers.add_parser('Reddit', description='Reddit')
+    subparser_planetoid = subparsers.add_parser('Planetoid', description='Planetoid')
     
-    for p in [parser_reddit, parser_planetoid]:
-        p.add_argument('--model', type=str, choices=SUPPORTED_MODELS,
+    for parse in [subparser_reddit, subparser_planetoid]:
+        parse.add_argument('--model', type=str, choices=SUPPORTED_MODELS,
                             help=f'Choose one of the supported models: {", ".join(SUPPORTED_MODELS)}')
-        p.add_argument('--n_trials', type=valid_positive_int, help='number of trials')
-        p.add_argument('--epochs', type=valid_positive_int, help='epochs per trial')
+        parse.add_argument('--n_trials', type=valid_positive_int, help='number of trials')
+        parse.add_argument('--epochs', type=valid_positive_int, help='epochs per trial')
     
-    parser_planetoid.add_argument('--dataset', type=str, choices=SUPPORTED_DATASETS,
+    subparser_planetoid.add_argument('--dataset', type=str, choices=SUPPORTED_DATASETS,
                                   help=f'Choose one of the supported datasets: {", ".join(SUPPORTED_DATASETS)}')
     
-    parser_reddit.add_argument('--batch_size', type=int, help='set data per iteration')
-    parser_reddit.add_argument('--num_neighbors', type=eval, help='neighbors sampled in graph layers')
+    subparser_reddit.add_argument('--batch_size', type=int, help='set data per iteration')
+    subparser_reddit.add_argument('--num_neighbors', type=eval, help='neighbors sampled in graph layers')
     return parser.parse_args()
 
 
