@@ -101,29 +101,28 @@ def objective(trial, train_loader, data, dataset,
     best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(1, args.epochs+1):
-        if args.dataset_type == 'Reddit':
-            total_loss, total_train_acc = 0, 0
-            total_val_acc, total_test_acc = 0, 0
+        total_loss, total_train_acc = 0, 0
+        total_val_acc, total_test_acc = 0, 0
             
-            for batch in train_loader:
-                x, edge_index, edge_attr = preprocess_data(batch)
-                x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
-                loss = train(x, edge_index, edge_attr, batch, model, optimizer, device)
-                train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, batch, model, device)
-                scheduler.step(loss)
-                total_loss += loss
-                total_train_acc += train_acc
-                total_val_acc += val_acc
-                total_test_acc += test_acc
-                            
-            loss = total_loss / len(train_loader)
-            train_acc = total_train_acc / len(train_loader)
-            val_acc = total_val_acc / len(train_loader)
-            test_acc = total_test_acc / len(train_loader)
-        else:
-            loss = train(x, edge_index, edge_attr, data, model, optimizer, device)
-            train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, data, model, device)
+        for batch in train_loader:
+            x, edge_index, edge_attr = preprocess_data(batch)
+            x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
+            loss = train(x, edge_index, edge_attr, batch, model, optimizer, device)
+            train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, batch, model, device)
             scheduler.step(loss)
+            total_loss += loss
+            total_train_acc += train_acc
+            total_val_acc += val_acc
+            total_test_acc += test_acc
+                        
+        loss = total_loss / len(train_loader)
+        train_acc = total_train_acc / len(train_loader)
+        val_acc = total_val_acc / len(train_loader)
+        test_acc = total_test_acc / len(train_loader)
+        # else:
+        #     loss = train(x, edge_index, edge_attr, data, model, optimizer, device)
+        #     train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, data, model, device)
+        #     scheduler.step(loss)
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
@@ -210,12 +209,10 @@ def parser_arguments():
                             help=f'Choose one of the supported models: {", ".join(SUPPORTED_MODELS)}')
         parse.add_argument('--n_trials', type=valid_positive_int, help='number of trials')
         parse.add_argument('--epochs', type=valid_positive_int, help='epochs per trial')
-    
-    subparser_planetoid.add_argument('--dataset', type=str, choices=SUPPORTED_DATASETS,
-                                  help=f'Choose one of the supported datasets: {", ".join(SUPPORTED_DATASETS)}')
-    
-    subparser_reddit.add_argument('--batch_size', type=int, help='set data per iteration')
-    subparser_reddit.add_argument('--num_neighbors', type=eval, help='neighbors sampled in graph layers')
+        parse.add_argument('--batch_size', type=int, help='set data per iteration')
+        parse.add_argument('--num_neighbors', type=eval, help='neighbors sampled in graph layers')
+        parse.add_argument('--dataset', type=str, choices=SUPPORTED_DATASETS,
+                           help=f'Choose one of the supported datasets: {", ".join(SUPPORTED_DATASETS)}')
     return parser.parse_args()
 
 
@@ -229,9 +226,8 @@ def main(args: argparse.Namespace):
     data = dataset[0]
     x, edge_index, edge_attr = preprocess_data(data)
     
-    if args.dataset_type == 'Reddit':
-        train_loader = get_train_loader(data=data, num_neighbors=args.num_neighbors,
-                                        batch_size=args.batch_size)
+    train_loader = get_train_loader(data=data, num_neighbors=args.num_neighbors,
+                                    batch_size=args.batch_size)
 
     study_name = args.dataset_type if args.dataset_type == 'Reddit' else args.dataset + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
@@ -244,7 +240,7 @@ def main(args: argparse.Namespace):
                                 load_if_exists=True)
    
     partial_objective = partial(objective,
-                                train_loader=train_loader if args.dataset_type == 'Reddit' else None,
+                                train_loader=train_loader,
                                 data=data, dataset=dataset,
                                 x=x, edge_index=edge_index, edge_attr=edge_attr,
                                 args=args, device=device)
