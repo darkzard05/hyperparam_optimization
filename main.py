@@ -12,22 +12,15 @@ import torch_geometric.transforms as T
 
 import optuna
 from optuna.samplers import TPESampler
-from optuna.pruners import HyperbandPruner, MedianPruner, PercentilePruner
+from optuna.pruners import HyperbandPruner
 from optuna.trial import TrialState
 
 import nn_model
-from load_dataset import get_dataset, get_train_loader
+from graph_dataloader import get_dataset, get_train_loader, preprocess_data
 from settings import DATA_DEFAULT_PATH, LOG_INTERVAL
 from hyperparams_utils import (get_common_model_params, add_extra_model_params,
                                get_optim_params)
 from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS
-
-
-def preprocess_data(data) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    x = (data.x - data.x.mean()) / data.x.std()
-    edge_index = data.edge_index
-    edge_attr = data.edge_attr
-    return x, edge_index, edge_attr
 
 
 def train(x: torch.Tensor,
@@ -147,7 +140,7 @@ def save_best_trial_to_json(study,
     result = {
         'date_time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'model_name': args.model,
-        'dataset_name': args.dataset_type if args.dataset_type == 'Reddit' else args.dataset,
+        'dataset_name': args.dataset,
         'best_trials': {
             'params': best_trial.params,
             'value': best_trial.value,
@@ -155,7 +148,7 @@ def save_best_trial_to_json(study,
             }
         }
     
-    filename = f'best_trial_{args.model}_{args.dataset_type if args.dataset_type == "Reddit" else args.dataset}.json'
+    filename = f'best_trial_{args.model}_{args.dataset}.json'
     
     with open(filename, 'w') as f:
         json.dump(result, f)
@@ -174,7 +167,7 @@ def display_results(study,
       Number of pruned trials: {len(pruned_trials)}
       Number of complete trials: {len(complete_trials)}
     Model name: {args.model}
-    Dataset name: {args.dataset_type if args.dataset_type == 'Reddit' else args.dataset}
+    Dataset name: {args.dataset}
     Best trial:
       Value: {trial.value:.4f}
     Parameters:''')
@@ -198,43 +191,36 @@ def valid_positive_int(x) -> int:
 
 def parser_arguments():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', type=str, choices=SUPPORTED_DATASETS,
+                        help=f'Choose one of the supported datasets: {", ".join(SUPPORTED_DATASETS)}')
+    parser.add_argument('--model', type=str, choices=SUPPORTED_MODELS,
+                        help=f'Choose one of the supported models: {", ".join(SUPPORTED_MODELS)}')
+    parser.add_argument('--n_trials', type=valid_positive_int, help='number of trials')
+    parser.add_argument('--epochs', type=valid_positive_int, help='epochs per trial')
+    parser.add_argument('--batch_size', type=int, help='set data per iteration')
+    parser.add_argument('--num_neighbors', type=eval, help='neighbors sampled in graph layers')
     
-    subparsers = parser.add_subparsers(dest='dataset_type', title='Reddit or Planetoid')
-    
-    subparser_reddit = subparsers.add_parser('Reddit', description='Reddit')
-    subparser_planetoid = subparsers.add_parser('Planetoid', description='Planetoid')
-    
-    for parse in [subparser_reddit, subparser_planetoid]:
-        parse.add_argument('--model', type=str, choices=SUPPORTED_MODELS,
-                            help=f'Choose one of the supported models: {", ".join(SUPPORTED_MODELS)}')
-        parse.add_argument('--n_trials', type=valid_positive_int, help='number of trials')
-        parse.add_argument('--epochs', type=valid_positive_int, help='epochs per trial')
-        parse.add_argument('--batch_size', type=int, help='set data per iteration')
-        parse.add_argument('--num_neighbors', type=eval, help='neighbors sampled in graph layers')
-        parse.add_argument('--dataset', type=str, choices=SUPPORTED_DATASETS,
-                           help=f'Choose one of the supported datasets: {", ".join(SUPPORTED_DATASETS)}')
     return parser.parse_args()
 
 
 def main(args: argparse.Namespace):
-    dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset_type if args.dataset_type == 'Reddit'
-                                else args.dataset)
-    dataset = get_dataset(path=dataset_path, name=args.dataset_type if args.dataset_type == 'Reddit'
-                          else args.dataset, transform=T.TargetIndegree())
+    dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
+    dataset = get_dataset(path=dataset_path, name=args.dataset, transform=T.TargetIndegree())
         
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0]
     x, edge_index, edge_attr = preprocess_data(data)
     
-    train_loader = get_train_loader(data=data, num_neighbors=args.num_neighbors,
+    train_loader = get_train_loader(data=data,
+                                    num_neighbors=args.num_neighbors,
                                     batch_size=args.batch_size)
 
-    study_name = args.dataset_type if args.dataset_type == 'Reddit' else args.dataset + '_' + args.model + '_study'
+    study_name = args.dataset + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
 
     study = optuna.create_study(storage=storage_name,
                                 sampler=TPESampler(),
-                                pruner=MedianPruner(),
+                                pruner=HyperbandPruner(),
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
