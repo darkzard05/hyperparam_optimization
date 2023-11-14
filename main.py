@@ -96,26 +96,23 @@ def objective(trial, train_loader, data, dataset,
     for epoch in range(1, args.epochs+1):
         total_loss, total_train_acc = 0, 0
         total_val_acc, total_test_acc = 0, 0
-            
+        
         for batch in train_loader:
             x, edge_index, edge_attr = preprocess_data(batch)
             x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
             loss = train(x, edge_index, edge_attr, batch, model, optimizer, device)
             train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, batch, model, device)
-            scheduler.step(loss)
             total_loss += loss
             total_train_acc += train_acc
             total_val_acc += val_acc
             total_test_acc += test_acc
-                        
+            
         loss = total_loss / len(train_loader)
         train_acc = total_train_acc / len(train_loader)
         val_acc = total_val_acc / len(train_loader)
         test_acc = total_test_acc / len(train_loader)
-        # else:
-        #     loss = train(x, edge_index, edge_attr, data, model, optimizer, device)
-        #     train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, data, model, device)
-        #     scheduler.step(loss)
+        
+        scheduler.step(total_loss)
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
@@ -219,7 +216,9 @@ def main(args: argparse.Namespace):
     storage_name = 'sqlite:///planetoid-study.db'
 
     study = optuna.create_study(storage=storage_name,
-                                sampler=TPESampler(),
+                                sampler=TPESampler(consider_prior=False,
+                                                   n_startup_trials=5,
+                                                   multivariate=False),
                                 pruner=HyperbandPruner(),
                                 study_name=study_name,                                
                                 direction='maximize',
