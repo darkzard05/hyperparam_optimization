@@ -72,7 +72,6 @@ def initialize_model_and_optimizer(trial, dataset,
     model_class_name = args.model+'Model'
     model = getattr(nn_model, model_class_name)(**model_params)
     model.to(device)
-    
     # Initialize optimizer
     optim_params = get_optim_params(trial)
     optimizer = getattr(optim, optim_params['optimizer'])(model.parameters(),
@@ -81,7 +80,7 @@ def initialize_model_and_optimizer(trial, dataset,
     return model, optimizer
 
 
-def objective(trial, train_loader, data, dataset,
+def objective(trial, train_loader, dataset,
               x: torch.Tensor,
               edge_index: torch.Tensor,
               edge_attr: torch.Tensor,
@@ -196,6 +195,7 @@ def parser_arguments():
     parser.add_argument('--epochs', type=valid_positive_int, help='epochs per trial')
     parser.add_argument('--batch_size', type=int, help='set data per iteration')
     parser.add_argument('--num_neighbors', type=eval, help='neighbors sampled in graph layers')
+    parser.add_argument('--num_workers', type=int, default=0, help='adjust the workers for fast data loading')
     
     return parser.parse_args()
 
@@ -210,7 +210,8 @@ def main(args: argparse.Namespace):
     
     train_loader = get_train_loader(data=data,
                                     num_neighbors=args.num_neighbors,
-                                    batch_size=args.batch_size)
+                                    batch_size=args.batch_size,
+                                    num_workers=args.num_workers)
 
     study_name = args.dataset + '_' + args.model + '_study'
     storage_name = 'sqlite:///planetoid-study.db'
@@ -225,8 +226,7 @@ def main(args: argparse.Namespace):
                                 load_if_exists=True)
    
     partial_objective = partial(objective,
-                                train_loader=train_loader,
-                                data=data, dataset=dataset,
+                                train_loader=train_loader, dataset=dataset,
                                 x=x, edge_index=edge_index, edge_attr=edge_attr,
                                 args=args, device=device)
             
