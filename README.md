@@ -35,17 +35,17 @@ pip install -r requirements.txt
 ```
 3. Run the main script with desired arguments:
 ```
-python main.py Planetoid --dataset=Cora --model==APPNP --n_trials=100 --epochs=100
-python main.py Reddit --model=APPNP --n_trial=10 --epochs=10 --batch_size=1024 --num_neighbors=[10, 10]
+python main.py --dataset=Cora --model==APPNP --n_trials=100 --epochs=100 --batch_size=1024 --num_neighbors=[10,10] --num_workers=0
 ```
 
 ## Arguments
 - model: Model to be used. (APPNP, Splineconv, GAT)
-- dataset: Dataset to be used. (Planetoid[Cora, PubMed, CiteSeer], Reddit)
+- dataset: Dataset to be used. (Cora, PubMed, CiteSeer, Reddit)
 - n_trials: Number of trials.
 - epochs: Number of epochs per trial.
 - batch_size: set data per iteration. (Reddit)
 - num_neighbors: neighbors sampled in graph layer. (Reddit)
+- num_workers: how many subprocesses to use for data loading. (default: 0)
 
 ## Models
 
