@@ -21,8 +21,8 @@ def get_dataset(path, name, transform=T.TargetIndegree()):
     return Planetoid(root=path, name=name, transform=transform)
 
 
-def get_train_loader(data, num_neighbors, batch_size):
-    kwargs = {'num_workers': 0, 'pin_memory': True, 'shuffle': True}
+def get_train_loader(data, num_neighbors, batch_size, num_workers):
+    kwargs = {'num_workers': num_workers, 'pin_memory': True, 'shuffle': True}
     train_loader = NeighborLoader(data=data,
                                   num_neighbors=num_neighbors,
                                   input_nodes=data.train_mask,
