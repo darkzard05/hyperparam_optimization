@@ -70,11 +70,12 @@ def initialize_model_and_optimizer(trial, dataset,
                     'out_channels': dataset.num_classes,
                     **model_basic_params, **model_extra_params}
     model_class_name = args.model+'Model'
-    model = getattr(nn_model, model_class_name)(**model_params)
+    model = nn_model.__dict__[model_class_name](**model_params)
     model.to(device)
+    
     # Initialize optimizer
     optim_params = get_optim_params(trial)
-    optimizer = getattr(optim, optim_params['optimizer'])(model.parameters(),
+    optimizer = optim.__dict__[optim_params['optimizer']](model.parameters(),
                                                           lr=optim_params['learning_rate'],
                                                           weight_decay=optim_params['weight_decay'])
     return model, optimizer
@@ -126,7 +127,7 @@ def objective(trial, train_loader, dataset,
         if trial.should_prune():
             raise optuna.exceptions.TrialPruned()
         
-    return best_test_acc
+    return val_acc
 
 
 def save_best_trial_to_json(study,
@@ -206,6 +207,7 @@ def main(args: argparse.Namespace):
         
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0]
+    
     x, edge_index, edge_attr = preprocess_data(data)
     
     train_loader = get_train_loader(data=data,
@@ -217,7 +219,7 @@ def main(args: argparse.Namespace):
     storage_name = 'sqlite:///planetoid-study.db'
 
     study = optuna.create_study(storage=storage_name,
-                                sampler=TPESampler(consider_prior=False,
+                                sampler=TPESampler(consider_prior=True,
                                                    n_startup_trials=5,
                                                    multivariate=False),
                                 pruner=HyperbandPruner(),
