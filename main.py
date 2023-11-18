@@ -31,10 +31,11 @@ def train(x: torch.Tensor,
     optimizer.zero_grad()
     output = model(x.to(device), edge_index.to(device), edge_attr.to(device))[data.train_mask]
     target = data.y.to(device)[data.train_mask]
-    loss = nn.CrossEntropyLoss()(output, target)
+    loss_fn = nn.CrossEntropyLoss()
+    loss = loss_fn(output, target)
     loss.backward()
     optimizer.step()
-    return loss
+    return loss.item()
 
 
 def test(x: torch.Tensor,
@@ -89,7 +90,9 @@ def objective(trial, train_loader, dataset,
               device: torch.device) -> torch.Tensor:
     model, optimizer = initialize_model_and_optimizer(trial, dataset, args, device)
     
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
+                                                     mode='min', factor=0.5, patience=10,
+                                                     verbose=True)
     
     best_val_acc, best_test_acc = 0, 0
     
@@ -112,7 +115,7 @@ def objective(trial, train_loader, dataset,
         val_acc = total_val_acc / len(train_loader)
         test_acc = total_test_acc / len(train_loader)
         
-        scheduler.step(total_loss)
+        scheduler.step(val_acc)
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
@@ -127,7 +130,7 @@ def objective(trial, train_loader, dataset,
         if trial.should_prune():
             raise optuna.exceptions.TrialPruned()
         
-    return val_acc
+    return best_test_acc
 
 
 def save_best_trial_to_json(study,
@@ -215,7 +218,7 @@ def main(args: argparse.Namespace):
                                     batch_size=args.batch_size,
                                     num_workers=args.num_workers)
 
-    study_name = args.dataset + '_' + args.model + '_study'
+    study_name = f'{args.dataset}_{args.model}_study'
     storage_name = 'sqlite:///planetoid-study.db'
 
     study = optuna.create_study(storage=storage_name,
