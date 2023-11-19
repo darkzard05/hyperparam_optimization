@@ -61,10 +61,9 @@ def evaluate(x: torch.Tensor,
     return tuple(results)
 
 
-def initialize_model_and_optimizer(trial, dataset,
-                                   args: argparse.Namespace,
-                                   device: torch.device):
-    # Initialize model
+def initialize_model(trial, dataset,
+                     args: argparse.Namespace,
+                     device: torch.device):
     model_basic_params = get_common_model_params(trial)
     model_extra_params = add_extra_model_params(trial, args.model, model_basic_params)
     model_params = {'in_channels': dataset[0].num_features,
@@ -73,13 +72,15 @@ def initialize_model_and_optimizer(trial, dataset,
     model_class_name = args.model+'Model'
     model = nn_model.__dict__[model_class_name](**model_params)
     model.to(device)
-    
-    # Initialize optimizer
+    return model
+
+
+def initialize_optimizer(trial, model):
     optim_params = get_optim_params(trial)
     optimizer = optim.__dict__[optim_params['optimizer']](model.parameters(),
                                                           lr=optim_params['learning_rate'],
                                                           weight_decay=optim_params['weight_decay'])
-    return model, optimizer
+    return optimizer
 
 
 def objective(trial, train_loader, dataset,
@@ -88,7 +89,8 @@ def objective(trial, train_loader, dataset,
               edge_attr: torch.Tensor,
               args: argparse.Namespace,
               device: torch.device) -> torch.Tensor:
-    model, optimizer = initialize_model_and_optimizer(trial, dataset, args, device)
+    model = initialize_model(trial, dataset, args, device)
+    optimizer = initialize_optimizer(trial, model)
     
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
                                                      mode='min', factor=0.5, patience=10,
@@ -225,7 +227,8 @@ def main(args: argparse.Namespace):
                                 sampler=TPESampler(consider_prior=True,
                                                    n_startup_trials=5,
                                                    multivariate=False),
-                                pruner=HyperbandPruner(),
+                                pruner=HyperbandPruner(min_resource=1,
+                                                       max_resource=50),
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
