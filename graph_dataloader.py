@@ -7,11 +7,12 @@ import torch_geometric.transforms as T
 
 from optuna.samplers import BaseSampler
 
-def preprocess_data(data) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+
+def preprocess_data(data, device) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     x = (data.x - data.x.mean()) / data.x.std()
     edge_index = data.edge_index
     edge_attr = data.edge_attr
-    return x, edge_index, edge_attr
+    return x.to(device), edge_index.to(device), edge_attr.to(device)
 
 
 def get_dataset(path, name, transform=T.TargetIndegree()):

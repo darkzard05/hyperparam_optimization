@@ -84,9 +84,6 @@ def initialize_optimizer(trial, model):
 
 
 def objective(trial, train_loader, dataset,
-              x: torch.Tensor,
-              edge_index: torch.Tensor,
-              edge_attr: torch.Tensor,
               args: argparse.Namespace,
               device: torch.device) -> torch.Tensor:
     model = initialize_model(trial, dataset, args, device)
@@ -103,8 +100,7 @@ def objective(trial, train_loader, dataset,
         total_val_acc, total_test_acc = 0, 0
         
         for batch in train_loader:
-            x, edge_index, edge_attr = preprocess_data(batch)
-            x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
+            x, edge_index, edge_attr = preprocess_data(batch, device)
             loss = train(x, edge_index, edge_attr, batch, model, optimizer, device)
             train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, batch, model, device)
             total_loss += loss
@@ -213,8 +209,6 @@ def main(args: argparse.Namespace):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0]
     
-    x, edge_index, edge_attr = preprocess_data(data)
-    
     train_loader = get_train_loader(data=data,
                                     num_neighbors=args.num_neighbors,
                                     batch_size=args.batch_size,
@@ -235,7 +229,6 @@ def main(args: argparse.Namespace):
    
     partial_objective = partial(objective,
                                 train_loader=train_loader, dataset=dataset,
-                                x=x, edge_index=edge_index, edge_attr=edge_attr,
                                 args=args, device=device)
             
     study.optimize(partial_objective, n_trials=args.n_trials)
