@@ -23,7 +23,8 @@ def get_dataset(path, name, transform=T.TargetIndegree()):
 
 
 def get_train_loader(data, num_neighbors, batch_size, num_workers):
-    kwargs = {'num_workers': num_workers, 'pin_memory': True, 'shuffle': True}
+    kwargs = {'num_workers': num_workers, 'pin_memory': True,
+              'persistent_workers': True, 'shuffle': True}
     train_loader = NeighborLoader(data=data,
                                   num_neighbors=num_neighbors,
                                   input_nodes=data.train_mask,
