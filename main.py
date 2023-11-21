@@ -8,6 +8,7 @@ from functools import partial
 import torch
 import torch.nn as nn
 from torch import optim
+from torch.cuda.amp import autocast, GradScaler
 import torch_geometric.transforms as T
 
 import optuna
@@ -26,15 +27,21 @@ from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_S
 def train(x: torch.Tensor,
           edge_index: torch.Tensor,
           edge_attr: torch.Tensor,
-          data, model, optimizer, device) -> torch.Tensor:
+          data, model, optimizer, scaler,device) -> torch.Tensor:
     model.train()
     optimizer.zero_grad()
-    output = model(x.to(device), edge_index.to(device), edge_attr.to(device))[data.train_mask]
-    target = data.y.to(device)[data.train_mask]
-    loss_fn = nn.CrossEntropyLoss()
-    loss = loss_fn(output, target)
-    loss.backward()
-    optimizer.step()
+    
+    with autocast():
+        output = model(x.to(device), edge_index.to(device), edge_attr.to(device))[data.train_mask]
+        target = data.y.to(device)[data.train_mask]
+        loss_fn = nn.CrossEntropyLoss()
+        loss = loss_fn(output, target)
+    
+    scaler.scale(loss).backward()
+    scaler.step(optimizer)
+    scaler.update()
+    # loss.backward()
+    # optimizer.step()
     return loss.item()
 
 
@@ -93,6 +100,8 @@ def objective(trial, train_loader, dataset,
                                                      mode='min', factor=0.5, patience=10,
                                                      verbose=True)
     
+    scaler = GradScaler()
+    
     best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(1, args.epochs+1):
@@ -101,7 +110,7 @@ def objective(trial, train_loader, dataset,
         
         for batch in train_loader:
             x, edge_index, edge_attr = preprocess_data(batch, device)
-            loss = train(x, edge_index, edge_attr, batch, model, optimizer, device)
+            loss = train(x, edge_index, edge_attr, batch, model, optimizer, scaler, device)
             train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, batch, model, device)
             total_loss += loss
             total_train_acc += train_acc
