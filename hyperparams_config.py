@@ -6,7 +6,7 @@ COMMON_MODEL_PARAMS = {
     'activation': ['relu', 'leakyrelu', 'I', 'elu', 'tanh', 'prelu'],
     'dropout': [0.0, 0.7],
     'n_units': [2** i for i in range(2, 8)],
-    'num_layers': [1, 5]
+    'num_layers': [1, 3]
 }
 
 EXTRA_MODEL_PARAMS = {
