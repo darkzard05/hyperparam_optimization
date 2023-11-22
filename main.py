@@ -17,7 +17,7 @@ from optuna.pruners import HyperbandPruner
 from optuna.trial import TrialState
 
 import nn_model
-from graph_dataloader import get_dataset, get_train_loader, preprocess_data
+from graph_dataloader import get_dataset, get_dataloader, preprocess_data
 from settings import DATA_DEFAULT_PATH, LOG_INTERVAL
 from hyperparams_utils import (get_common_model_params, add_extra_model_params,
                                get_optim_params)
@@ -218,10 +218,11 @@ def main(args: argparse.Namespace):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0]
     
-    train_loader = get_train_loader(data=data,
-                                    num_neighbors=args.num_neighbors,
-                                    batch_size=args.batch_size,
-                                    num_workers=args.num_workers)
+    train_loader = get_dataloader(data=data,
+                                  num_neighbors=args.num_neighbors,
+                                  mask=data.train_mask,
+                                  batch_size=args.batch_size,
+                                  num_workers=args.num_workers)
 
     study_name = f'{args.dataset}_{args.model}_study'
     storage_name = 'sqlite:///planetoid-study.db'
