@@ -1,11 +1,9 @@
 import torch
 from typing import Tuple
 
-from torch_geometric.loader import DataLoader, NodeLoader, NeighborLoader
+from torch_geometric.loader import NeighborLoader
 from torch_geometric.datasets import Planetoid, Reddit
 import torch_geometric.transforms as T
-
-from optuna.samplers import BaseSampler
 
 
 def preprocess_data(data, device) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -22,12 +20,13 @@ def get_dataset(path, name, transform=T.TargetIndegree()):
     return Planetoid(root=path, name=name, transform=transform)
 
 
-def get_train_loader(data, num_neighbors, batch_size, num_workers):
+def get_dataloader(data, num_neighbors, mask, batch_size, num_workers):
     kwargs = {'num_workers': num_workers, 'pin_memory': True,
-              'persistent_workers': True, 'shuffle': True}
-    train_loader = NeighborLoader(data=data,
+              'persistent_workers': True if num_workers > 0 else False,
+              'shuffle': True}
+    dataloader = NeighborLoader(data=data,
                                   num_neighbors=num_neighbors,
-                                  input_nodes=data.train_mask,
+                                  input_nodes=mask,
                                   batch_size=batch_size,
                                   **kwargs)
-    return train_loader
+    return dataloader
