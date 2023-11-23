@@ -24,24 +24,23 @@ from hyperparams_utils import (get_common_model_params, add_extra_model_params,
 from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS
 
 
-def train(x: torch.Tensor,
+def train(model,
+          x: torch.Tensor,
           edge_index: torch.Tensor,
           edge_attr: torch.Tensor,
-          data, model, optimizer, scaler,device) -> torch.Tensor:
+          data, optimizer, scaler,device) -> torch.Tensor:
     model.train()
     optimizer.zero_grad()
     
     with autocast():
         output = model(x.to(device), edge_index.to(device), edge_attr.to(device))[data.train_mask]
-        target = data.y.to(device)[data.train_mask]
+        target = data.y[data.train_mask].to(device)
         loss_fn = nn.CrossEntropyLoss()
         loss = loss_fn(output, target)
     
     scaler.scale(loss).backward()
     scaler.step(optimizer)
     scaler.update()
-    # loss.backward()
-    # optimizer.step()
     return loss.item()
 
 
@@ -110,7 +109,7 @@ def objective(trial, train_loader, dataset,
         
         for batch in train_loader:
             x, edge_index, edge_attr = preprocess_data(batch, device)
-            loss = train(x, edge_index, edge_attr, batch, model, optimizer, scaler, device)
+            loss = train(model, x, edge_index, edge_attr, batch, optimizer, scaler, device)
             train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, batch, model, device)
             total_loss += loss
             total_train_acc += train_acc
