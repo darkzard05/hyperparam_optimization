@@ -62,9 +62,9 @@ def evaluate(x: torch.Tensor,
              edge_index: torch.Tensor,
              edge_attr: torch.Tensor,
              data, model, device) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    masks = [data.train_mask, data.val_mask, data.test_mask]
-    results = [test(x, edge_index, edge_attr, data, model, mask, device) for mask in masks]
-    return tuple(results)
+    val_ = test(x, edge_index, edge_attr, data, model, data.val_mask, device)
+    test_ = test(x, edge_index, edge_attr, data, model, data.test_mask, device)
+    return val_, test_
 
 
 def initialize_model(trial, dataset,
@@ -104,20 +104,20 @@ def objective(trial, train_loader, dataset,
     best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(1, args.epochs+1):
-        total_loss, total_train_acc = 0, 0
+        total_loss = 0
         total_val_acc, total_test_acc = 0, 0
         
         for batch in train_loader:
             x, edge_index, edge_attr = preprocess_data(batch, device)
             loss = train(model, x, edge_index, edge_attr, batch, optimizer, scaler, device)
-            train_acc, val_acc, test_acc = evaluate(x, edge_index, edge_attr, batch, model, device)
+            val_acc, test_acc = evaluate(x, edge_index, edge_attr, batch, model, device)
             total_loss += loss
-            total_train_acc += train_acc
+            # total_train_acc += train_acc
             total_val_acc += val_acc
             total_test_acc += test_acc
             
         loss = total_loss / len(train_loader)
-        train_acc = total_train_acc / len(train_loader)
+        # train_acc = total_train_acc / len(train_loader)
         val_acc = total_val_acc / len(train_loader)
         test_acc = total_test_acc / len(train_loader)
         
@@ -128,7 +128,7 @@ def objective(trial, train_loader, dataset,
             best_test_acc = test_acc
             
         if epoch % LOG_INTERVAL == 0 or best_val_acc == val_acc:
-            log_message = f'epoch [{epoch}/{args.epochs}], loss: {loss:.3f}, train_acc: {train_acc:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}'
+            log_message = f'epoch [{epoch}/{args.epochs}], loss: {loss:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}'
             print(log_message)
             
         trial.report(val_acc, epoch)
@@ -216,6 +216,8 @@ def main(args: argparse.Namespace):
         
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0]
+    print(f'num of nodes: {data.num_nodes}, num of features: {data.num_node_features}')
+    print(f'train nodes: {data.train_mask.sum()}, val nodes: {data.val_mask.sum()}, test nodes: {data.test_mask.sum()}')
     
     train_loader = get_dataloader(data=data,
                                   num_neighbors=args.num_neighbors,
