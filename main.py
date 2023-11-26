@@ -24,33 +24,26 @@ from hyperparams_utils import (get_common_model_params, add_extra_model_params,
 from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS
 
 
-def train(model,
-          x: torch.Tensor,
-          edge_index: torch.Tensor,
-          edge_attr: torch.Tensor,
-          data, optimizer, scaler,device) -> torch.Tensor:
+def train(model, data, optimizer, scaler, device) -> torch.Tensor:
     model.train()
     optimizer.zero_grad()
-    
     with autocast():
-        output = model(x.to(device), edge_index.to(device), edge_attr.to(device))[data.train_mask]
+        output = model(data.x.to(device), data.edge_index.to(device),
+                       data.edge_attr.to(device))[data.train_mask]
         target = data.y[data.train_mask].to(device)
         loss_fn = nn.CrossEntropyLoss()
         loss = loss_fn(output, target)
-    
     scaler.scale(loss).backward()
     scaler.step(optimizer)
     scaler.update()
     return loss.item()
 
 
-def test(x: torch.Tensor,
-         edge_index: torch.Tensor,
-         edge_attr: torch.Tensor,
-         data, model, mask, device) -> torch.Tensor:
+def test(model, data, mask, device) -> torch.Tensor:
     model.eval()
     with torch.no_grad():
-        output = model(x.to(device), edge_index.to(device), edge_attr.to(device))
+        output = model(data.x.to(device), data.edge_index.to(device),
+                       data.edge_attr.to(device))
         target = data.y.to(device)
         pred = output.argmax(dim=1)
         correct = pred[mask] == target[mask]
@@ -58,12 +51,9 @@ def test(x: torch.Tensor,
     return accuracy
 
 
-def evaluate(x: torch.Tensor,
-             edge_index: torch.Tensor,
-             edge_attr: torch.Tensor,
-             data, model, device) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    val_ = test(x, edge_index, edge_attr, data, model, data.val_mask, device)
-    test_ = test(x, edge_index, edge_attr, data, model, data.test_mask, device)
+def evaluate(model, data, device) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    val_ = test(model, data, data.val_mask, device)
+    test_ = test(model, data, data.test_mask, device)
     return val_, test_
 
 
@@ -98,7 +88,6 @@ def objective(trial, train_loader, dataset,
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
                                                      mode='min', factor=0.5, patience=10,
                                                      verbose=True)
-    
     scaler = GradScaler()
     
     best_val_acc, best_test_acc = 0, 0
@@ -108,16 +97,14 @@ def objective(trial, train_loader, dataset,
         total_val_acc, total_test_acc = 0, 0
         
         for batch in train_loader:
-            x, edge_index, edge_attr = preprocess_data(batch, device)
-            loss = train(model, x, edge_index, edge_attr, batch, optimizer, scaler, device)
-            val_acc, test_acc = evaluate(x, edge_index, edge_attr, batch, model, device)
+            batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch, device)
+            loss = train(model, batch, optimizer, scaler, device)
+            val_acc, test_acc = evaluate(model, batch, device)
             total_loss += loss
-            # total_train_acc += train_acc
             total_val_acc += val_acc
             total_test_acc += test_acc
             
         loss = total_loss / len(train_loader)
-        # train_acc = total_train_acc / len(train_loader)
         val_acc = total_val_acc / len(train_loader)
         test_acc = total_test_acc / len(train_loader)
         
