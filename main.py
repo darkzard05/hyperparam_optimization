@@ -46,14 +46,14 @@ def test(model, data, mask, device) -> torch.Tensor:
                        data.edge_attr.to(device))
         target = data.y.to(device)
         pred = output.argmax(dim=1)
-        correct = pred[mask] == target[mask]
+        correct = (pred == target)
         accuracy = correct.sum() / mask.sum()
     return accuracy
 
 
 def evaluate(model, data, device) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    val_ = test(model, data, data.val_mask, device)
-    test_ = test(model, data, data.test_mask, device)
+    val_ = test(model, data.subgraph(data.val_mask), data.val_mask, device)
+    test_ = test(model, data.subgraph(data.test_mask), data.test_mask, device)
     return val_, test_
 
 
@@ -67,7 +67,6 @@ def initialize_model(trial, dataset,
                     **model_basic_params, **model_extra_params}
     model_class_name = args.model+'Model'
     model = nn_model.__dict__[model_class_name](**model_params)
-    model.to(device)
     return model
 
 
@@ -79,7 +78,7 @@ def initialize_optimizer(trial, model):
     return optimizer
 
 
-def objective(trial, train_loader, dataset,
+def objective(trial, train_loader, data, dataset,
               args: argparse.Namespace,
               device: torch.device) -> torch.Tensor:
     model = initialize_model(trial, dataset, args, device)
@@ -94,19 +93,14 @@ def objective(trial, train_loader, dataset,
     
     for epoch in range(1, args.epochs+1):
         total_loss = 0
-        total_val_acc, total_test_acc = 0, 0
-        
+        model.to(device)
         for batch in train_loader:
             batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch, device)
             loss = train(model, batch, optimizer, scaler, device)
-            val_acc, test_acc = evaluate(model, batch, device)
             total_loss += loss
-            total_val_acc += val_acc
-            total_test_acc += test_acc
-            
+    
         loss = total_loss / len(train_loader)
-        val_acc = total_val_acc / len(train_loader)
-        test_acc = total_test_acc / len(train_loader)
+        val_acc, test_acc = evaluate(model, data, device)
         
         scheduler.step(val_acc)
         
@@ -203,6 +197,7 @@ def main(args: argparse.Namespace):
         
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0]
+    print(f'dataset name: {args.dataset}')
     print(f'num of nodes: {data.num_nodes}, num of features: {data.num_node_features}')
     print(f'train nodes: {data.train_mask.sum()}, val nodes: {data.val_mask.sum()}, test nodes: {data.test_mask.sum()}')
     
@@ -226,7 +221,8 @@ def main(args: argparse.Namespace):
                                 load_if_exists=True)
    
     partial_objective = partial(objective,
-                                train_loader=train_loader, dataset=dataset,
+                                train_loader=train_loader,
+                                data=data, dataset=dataset,
                                 args=args, device=device)
             
     study.optimize(partial_objective, n_trials=args.n_trials)
