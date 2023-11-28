@@ -25,10 +25,13 @@ def get_activation(activation):
 def build_layers(model, in_channels, out_channels, n_units, num_layers, heads,
                  **kwargs):
     model_list = ModuleList()
+    if model == 'GAT':
+        kwargs.update({'heads': heads})
     current = 1
     for num in range(num_layers):
         current = out_channels if num == num_layers-1 else current * n_units
-        model_list.append(model(in_channels, current, heads, **kwargs))
+        model_list.append(model(in_channels=in_channels,
+                                out_channels=current, **kwargs))
         in_channels = current * heads
     return model_list
 
