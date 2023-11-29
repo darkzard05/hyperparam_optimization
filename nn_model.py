@@ -22,17 +22,14 @@ def get_activation(activation):
     return ACTIVATION_FUNCTIONS[activation]
 
 
-def build_layers(model, in_channels, out_channels, n_units, num_layers, heads,
-                 **kwargs):
+def build_multi_layers(model, in_channels, out_channels, n_units, num_layers, **kwargs):
     model_list = ModuleList()
-    if model == 'GAT':
-        kwargs.update({'heads': heads})
     current = 1
     for num in range(num_layers):
         current = out_channels if num == num_layers-1 else current * n_units
         model_list.append(model(in_channels=in_channels,
                                 out_channels=current, **kwargs))
-        in_channels = current * heads
+        in_channels = current
     return model_list
 
 
@@ -67,9 +64,8 @@ class APPNPModel(BaseModel):
         self.alpha = alpha
         self.num_layers = num_layers
         
-        self.model_list = build_layers(Linear, self.in_channels, self.out_channels,
-                                       self.n_units, self.num_layers,
-                                       heads=1)
+        self.model_list = build_multi_layers(Linear, self.in_channels, self.out_channels,
+                                             self.n_units, self.num_layers)
         self.prop = APPNP(K=self.K, alpha=self.alpha)
         self.reset_parameters()
     
@@ -96,10 +92,9 @@ class SplineconvModel(BaseModel):
         self.kernel_size = kernel_size
         self.num_layers = num_layers
         
-        self.model_list = build_layers(SplineConv, self.in_channels, self.out_channels,
-                                       self.n_units, self.num_layers,
-                                       heads=1,
-                                       dim=1, kernel_size=self.kernel_size)
+        self.model_list = build_multi_layers(SplineConv, self.in_channels, self.out_channels,
+                                             self.n_units, self.num_layers,
+                                             dim=1, kernel_size=self.kernel_size)
         self.reset_parameters()
 
     def forward(self,
@@ -124,10 +119,10 @@ class GATModel(BaseModel):
         self.heads = heads
         self.num_layers = num_layers
         
-        self.model_list = build_layers(GATConv, self.in_channels, self.out_channels,
-                                       self.n_units, self.num_layers,
-                                       heads=self.heads,
-                                       dropout=self.dropout)
+        self.model_list = build_multi_layers(GATConv, self.in_channels, self.out_channels,
+                                             self.n_units, self.num_layers,
+                                             heads=self.heads,
+                                             dropout=self.dropout)
         self.reset_parameters()
     
     def forward(self,
