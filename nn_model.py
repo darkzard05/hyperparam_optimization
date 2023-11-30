@@ -22,14 +22,18 @@ def get_activation(activation):
     return ACTIVATION_FUNCTIONS[activation]
 
 
-def build_multi_layers(model, in_channels, out_channels, n_units, num_layers, **kwargs):
+def build_multi_layers(model, in_channels, out_channels, num_layers, n_units,
+                       **kwargs):
     model_list = ModuleList()
-    current = 1
-    for num in range(num_layers):
-        current = out_channels if num == num_layers-1 else current * n_units
-        model_list.append(model(in_channels=in_channels,
-                                out_channels=current, **kwargs))
-        in_channels = current
+    if num_layers == 1:
+        return ModuleList([model(in_channels, out_channels, **kwargs)])
+    else:
+        model_list.append(model(in_channels, n_units[0], **kwargs))
+    for i in range(1, num_layers-1):
+        if i == num_layers-2:
+            model_list.append(model(n_units[i], out_channels, **kwargs))
+        else:
+            model_list.append(model(n_units[i], n_units[i+1], **kwargs))
     return model_list
 
 
@@ -53,19 +57,14 @@ class BaseModel(torch.nn.Module):
             layer.reset_parameters()
 
 class APPNPModel(BaseModel):
-    def __init__(self,
-                 *args,
-                 K: int = 50,
-                 alpha: float = 0.1,
-                 num_layers: int = 1,
-                 **kwargs):
-        super().__init__(*args, **kwargs)
-        self.K = K
-        self.alpha = alpha
-        self.num_layers = num_layers
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for key, value in kwargs.items():
+            setattr(self, key, value)
         
-        self.model_list = build_multi_layers(Linear, self.in_channels, self.out_channels,
-                                             self.n_units, self.num_layers)
+        self.model_list = build_multi_layers(model=Linear, in_channels=self.in_channels,
+                                             out_channels=self.out_channels,
+                                             num_layers=self.num_layers, n_units=self.n_units)
         self.prop = APPNP(K=self.K, alpha=self.alpha)
         self.reset_parameters()
     
@@ -83,17 +82,13 @@ class APPNPModel(BaseModel):
 
 
 class SplineconvModel(BaseModel):
-    def __init__(self,
-                 *args,
-                 kernel_size: int = 2,
-                 num_layers: int = 1,
-                 **kwargs):
-        super().__init__(*args, **kwargs)
-        self.kernel_size = kernel_size
-        self.num_layers = num_layers
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for key, value in kwargs.items():
+            setattr(self, key, value)
         
         self.model_list = build_multi_layers(SplineConv, self.in_channels, self.out_channels,
-                                             self.n_units, self.num_layers,
+                                             self.num_layers, self.n_units,
                                              dim=1, kernel_size=self.kernel_size)
         self.reset_parameters()
 
@@ -109,15 +104,10 @@ class SplineconvModel(BaseModel):
 
     
 class GATModel(BaseModel):
-    def __init__(self,
-                 *args,
-                 heads: int = 4,
-                 num_layers: int = 1,
-                 **kwargs
-                 ):
-        super().__init__(*args, **kwargs)
-        self.heads = heads
-        self.num_layers = num_layers
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for key, value in kwargs.items():
+            setattr(self, key, value)
         
         self.model_list = build_multi_layers(GATConv, self.in_channels, self.out_channels,
                                              self.n_units, self.num_layers,

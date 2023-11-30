@@ -5,8 +5,9 @@ def get_common_model_params(trial):
     model_params = {
         'activation': trial.suggest_categorical('activation', COMMON_MODEL_PARAMS['activation']),
         'dropout': trial.suggest_float('dropout', *COMMON_MODEL_PARAMS['dropout']),
-        'n_units': trial.suggest_categorical('n_units', COMMON_MODEL_PARAMS['n_units']),
-        'num_layers': trial.suggest_int('num_layers', *COMMON_MODEL_PARAMS['num_layers'])
+        'num_layers': trial.suggest_int('num_layers', *COMMON_MODEL_PARAMS['num_layers']),
+        'n_units': [trial.suggest_categorical(f'n_units_{i+1}', COMMON_MODEL_PARAMS['n_units'])
+                    for i in range(model_params['num_layers']-1)] if model_params['num_layers'] > 1 else None
         }
     return model_params
 

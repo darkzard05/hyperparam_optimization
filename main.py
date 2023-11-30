@@ -58,14 +58,15 @@ def evaluate(model, data, device) -> Tuple[torch.Tensor, torch.Tensor, torch.Ten
 
 
 def initialize_model(trial, dataset,
-                     args: argparse.Namespace,
-                     device: torch.device):
+                     args: argparse.Namespace):
     model_basic_params = get_common_model_params(trial)
     model_extra_params = add_extra_model_params(trial, args.model, model_basic_params)
+    
+    model_class_name = args.model+'Model'
     model_params = {'in_channels': dataset[0].num_features,
                     'out_channels': dataset.num_classes,
                     **model_basic_params, **model_extra_params}
-    model_class_name = args.model+'Model'
+    
     model = nn_model.__dict__[model_class_name](**model_params)
     return model
 
