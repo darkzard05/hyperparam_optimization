@@ -31,34 +31,15 @@ def build_multi_layers(model, in_channels, out_channels, num_layers, n_units,
         model_list.append(model(in_channels, n_units[0], **kwargs))
     for i in range(1, num_layers-1):
         if i == num_layers-2:
-            model_list.append(model(n_units[i], out_channels, **kwargs))
+            model_list.append(model(n_units[i-1], out_channels, **kwargs))
         else:
-            model_list.append(model(n_units[i], n_units[i+1], **kwargs))
+            model_list.append(model(n_units[i-1], n_units[i], **kwargs))
     return model_list
 
 
-class BaseModel(torch.nn.Module):
-    def __init__(self,
-                 in_channels: int,
-                 out_channels: int,
-                 n_units: int = 16,
-                 dropout: float = 0.5,
-                 activation: str = 'relu'):
+class APPNPModel(nn.Module):
+    def __init__(self, kwargs):
         super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.n_units = n_units
-        self.dropout = dropout
-        self.activation = get_activation(activation)
-        self.model_list = None
-        
-    def reset_parameters(self):
-        for layer in self.model_list:
-            layer.reset_parameters()
-
-class APPNPModel(BaseModel):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
         for key, value in kwargs.items():
             setattr(self, key, value)
         
@@ -66,7 +47,12 @@ class APPNPModel(BaseModel):
                                              out_channels=self.out_channels,
                                              num_layers=self.num_layers, n_units=self.n_units)
         self.prop = APPNP(K=self.K, alpha=self.alpha)
+        self.activation = get_activation(self.activation)
         self.reset_parameters()
+    
+    def reset_parameters(self):
+        for layer in self.model_list:
+            layer.reset_parameters()
     
     def forward(self,
                 x: Tensor,
@@ -81,16 +67,21 @@ class APPNPModel(BaseModel):
         return x
 
 
-class SplineconvModel(BaseModel):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+class SplineconvModel(nn.Module):
+    def __init__(self, kwargs):
+        super().__init__()
         for key, value in kwargs.items():
             setattr(self, key, value)
         
         self.model_list = build_multi_layers(SplineConv, self.in_channels, self.out_channels,
                                              self.num_layers, self.n_units,
                                              dim=1, kernel_size=self.kernel_size)
+        self.activation = get_activation(self.activation)
         self.reset_parameters()
+
+    def reset_parameters(self):
+        for layer in self.model_list:
+            layer.reset_parameters()
 
     def forward(self,
                 x: Tensor,
@@ -103,9 +94,9 @@ class SplineconvModel(BaseModel):
         return x
 
     
-class GATModel(BaseModel):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+class GATModel(nn.Module):
+    def __init__(self, kwargs):
+        super().__init__()
         for key, value in kwargs.items():
             setattr(self, key, value)
         
@@ -113,7 +104,12 @@ class GATModel(BaseModel):
                                              self.n_units, self.num_layers,
                                              heads=self.heads,
                                              dropout=self.dropout)
+        self.activation = get_activation(self.activation)
         self.reset_parameters()
+    
+    def reset_parameters(self):
+        for layer in self.model_list:
+            layer.reset_parameters()
     
     def forward(self,
                 x: Tensor,

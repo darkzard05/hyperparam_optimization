@@ -21,7 +21,7 @@ from graph_dataloader import get_dataset, get_dataloader, preprocess_data
 from settings import DATA_DEFAULT_PATH, LOG_INTERVAL
 from hyperparams_utils import (get_common_model_params, add_extra_model_params,
                                get_optim_params)
-from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS, SUPPORTED_SPLITS
+from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS
 
 
 def train(model, data, optimizer, scaler, device) -> torch.Tensor:
@@ -59,15 +59,15 @@ def evaluate(model, data, device) -> Tuple[torch.Tensor, torch.Tensor, torch.Ten
 
 def initialize_model(trial, dataset,
                      args: argparse.Namespace):
-    model_basic_params = get_common_model_params(trial)
-    model_extra_params = add_extra_model_params(trial, args.model, model_basic_params)
-    
     model_class_name = args.model+'Model'
+    model_common_params = get_common_model_params(trial)
+    
     model_params = {'in_channels': dataset[0].num_features,
                     'out_channels': dataset.num_classes,
-                    **model_basic_params, **model_extra_params}
-    
-    model = nn_model.__dict__[model_class_name](**model_params)
+                    **model_common_params}
+    model_extra_params = add_extra_model_params(trial, args.model)
+    model_params.update(model_extra_params)    
+    model = nn_model.__dict__[model_class_name](model_params)
     return model
 
 
@@ -82,7 +82,7 @@ def initialize_optimizer(trial, model):
 def objective(trial, train_loader, data, dataset,
               args: argparse.Namespace,
               device: torch.device) -> torch.Tensor:
-    model = initialize_model(trial, dataset, args, device)
+    model = initialize_model(trial, dataset, args)
     optimizer = initialize_optimizer(trial, model)
     
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
@@ -198,9 +198,12 @@ def main(args: argparse.Namespace):
         
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = dataset[0]
-    print(f'dataset name: {args.dataset}')
-    print(f'num of nodes: {data.num_nodes}, num of features: {data.num_node_features}')
-    print(f'train nodes: {data.train_mask.sum()}, val nodes: {data.val_mask.sum()}, test nodes: {data.test_mask.sum()}')
+    print(f'''dataset name: {args.dataset}
+    number of nodes: {data.num_nodes}
+    number of features: {data.num_node_features}
+    number of train nodes: {data.train_mask.sum()}
+    number of val nodes: {data.val_mask.sum()}
+    number of test nodes: {data.test_mask.sum()}''')
     
     train_loader = get_dataloader(data=data,
                                   num_neighbors=args.num_neighbors,

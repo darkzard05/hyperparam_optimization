@@ -6,13 +6,14 @@ def get_common_model_params(trial):
         'activation': trial.suggest_categorical('activation', COMMON_MODEL_PARAMS['activation']),
         'dropout': trial.suggest_float('dropout', *COMMON_MODEL_PARAMS['dropout']),
         'num_layers': trial.suggest_int('num_layers', *COMMON_MODEL_PARAMS['num_layers']),
-        'n_units': [trial.suggest_categorical(f'n_units_{i+1}', COMMON_MODEL_PARAMS['n_units'])
-                    for i in range(model_params['num_layers']-1)] if model_params['num_layers'] > 1 else None
         }
+    model_params.update({'n_units': [trial.suggest_categorical(f'n_units_{i+1}', COMMON_MODEL_PARAMS['n_units'])
+                                     for i in range(model_params['num_layers']-1)] if model_params['num_layers'] > 1 else None})
     return model_params
 
 
-def add_extra_model_params(trial, model_name, model_params):
+def add_extra_model_params(trial, model_name):
+    params = dict()
     for param in EXTRA_MODEL_PARAMS[model_name]:
         param_type, param_range = EXTRA_PARAMS_TYPES[param]
         if param_type == 'categorical':
@@ -21,8 +22,8 @@ def add_extra_model_params(trial, model_name, model_params):
             suggest = trial.suggest_int(param, *param_range)
         elif param_type == 'float':
             suggest = trial.suggest_float(param, *param_range)
-        model_params[param] = suggest
-    return model_params
+        params[param] = suggest
+    return params
 
 
 def get_optim_params(trial):
