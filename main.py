@@ -1,6 +1,6 @@
 import os
 import json
-import datetime
+import datetime, time
 import argparse
 from typing import Tuple
 from functools import partial
@@ -24,18 +24,16 @@ from hyperparams_utils import (get_common_model_params, add_extra_model_params,
 from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS
 
 
-def train(model, data, optimizer, scaler, device) -> torch.Tensor:
+def train(model, data, optimizer, device) -> torch.Tensor:
     model.train()
     optimizer.zero_grad()
-    with autocast():
-        output = model(data.x.to(device), data.edge_index.to(device),
+    output = model(data.x.to(device), data.edge_index.to(device),
                        data.edge_attr.to(device))[data.train_mask]
-        target = data.y[data.train_mask].to(device)
-        loss_fn = nn.CrossEntropyLoss()
-        loss = loss_fn(output, target)
-    scaler.scale(loss).backward()
-    scaler.step(optimizer)
-    scaler.update()
+    target = data.y[data.train_mask].to(device)
+    loss_fn = nn.CrossEntropyLoss()
+    loss = loss_fn(output, target)
+    loss.backward()
+    optimizer.step()
     return loss.item()
 
 
@@ -88,22 +86,26 @@ def objective(trial, train_loader, data, dataset,
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
                                                      mode='min', factor=0.5, patience=10,
                                                      verbose=True)
-    scaler = GradScaler()
     
     best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(1, args.epochs+1):
         total_loss = 0
+        start = time.time()
+        
         model.to(device)
         for batch in train_loader:
             batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch, device)
-            loss = train(model, batch, optimizer, scaler, device)
+            loss = train(model, batch, optimizer, device)
             total_loss += loss
     
         loss = total_loss / len(train_loader)
-        val_acc, test_acc = evaluate(model, data, device)
+        train_time = time.time()-start
+        start = time.time()
         
+        val_acc, test_acc = evaluate(model, data, device)
         scheduler.step(val_acc)
+        print(f'training time: {train_time:.4f}, val, test time: {time.time()-start:.4f}')
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
@@ -205,11 +207,13 @@ def main(args: argparse.Namespace):
     number of val nodes: {data.val_mask.sum()}
     number of test nodes: {data.test_mask.sum()}''')
     
+    start = time.time()
     train_loader = get_dataloader(data=data,
                                   num_neighbors=args.num_neighbors,
                                   mask=data.train_mask,
                                   batch_size=args.batch_size,
                                   num_workers=args.num_workers)
+    print(f'train_loader time: {time.time()-start}')
 
     study_name = f'{args.dataset}_{args.model}_study'
     storage_name = 'sqlite:///planetoid-study.db'
