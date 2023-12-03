@@ -8,7 +8,6 @@ from functools import partial
 import torch
 import torch.nn as nn
 from torch import optim
-from torch.cuda.amp import autocast, GradScaler
 import torch_geometric.transforms as T
 
 import optuna
@@ -27,14 +26,13 @@ from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS
 def train(model, data, optimizer, device) -> torch.Tensor:
     model.train()
     optimizer.zero_grad()
-    output = model(data.x.to(device), data.edge_index.to(device),
-                       data.edge_attr.to(device))[data.train_mask]
+    output = model(data.x, data.edge_index, data.edge_attr)[data.train_mask]
     target = data.y[data.train_mask].to(device)
     loss_fn = nn.CrossEntropyLoss()
     loss = loss_fn(output, target)
     loss.backward()
     optimizer.step()
-    return loss.item()
+    return loss
 
 
 def test(model, data, mask, device) -> torch.Tensor:
@@ -101,9 +99,12 @@ def objective(trial, train_loader, data, dataset,
     
         loss = total_loss / len(train_loader)
         train_time = time.time()-start
+        print(f'memory used after training: {torch.cuda.memory_allocated(device=device) // 1e+6}')
+        
         start = time.time()
         
         val_acc, test_acc = evaluate(model, data, device)
+        print(f'memory used after val, test: {torch.cuda.memory_allocated(device=device) // 1e+6}')
         scheduler.step(val_acc)
         print(f'training time: {train_time:.4f}, val, test time: {time.time()-start:.4f}')
         
@@ -222,8 +223,7 @@ def main(args: argparse.Namespace):
                                 sampler=TPESampler(consider_prior=True,
                                                    n_startup_trials=5,
                                                    multivariate=False),
-                                pruner=HyperbandPruner(min_resource=1,
-                                                       max_resource=50),
+                                pruner=HyperbandPruner(),
                                 study_name=study_name,                                
                                 direction='maximize',
                                 load_if_exists=True)
