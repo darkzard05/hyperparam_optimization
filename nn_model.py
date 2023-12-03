@@ -31,9 +31,11 @@ def build_multi_layers(model, in_channels, out_channels, num_layers, n_units,
         model_list.append(model(in_channels, n_units[0], **kwargs))
     for i in range(1, num_layers-1):
         if i == num_layers-2:
-            model_list.append(model(n_units[i-1], out_channels, **kwargs))
+            model_list.append(model(n_units[i-1] * kwargs['heads'] if model == GATConv
+                                    else n_units[i-1], out_channels, **kwargs))
         else:
-            model_list.append(model(n_units[i-1], n_units[i], **kwargs))
+            model_list.append(model(n_units[i-1] * kwargs['heads'] if model == GATConv
+                                    else n_units[i-1], n_units[i], **kwargs))
     return model_list
 
 
@@ -101,7 +103,7 @@ class GATModel(nn.Module):
             setattr(self, key, value)
         
         self.model_list = build_multi_layers(GATConv, self.in_channels, self.out_channels,
-                                             self.n_units, self.num_layers,
+                                             self.num_layers, self.n_units,
                                              heads=self.heads,
                                              dropout=self.dropout)
         self.activation = get_activation(self.activation)
