@@ -20,13 +20,23 @@ def get_dataset(path, name, transform=T.TargetIndegree()):
     return Planetoid(root=path, name=name, transform=transform)
 
 
-def get_dataloader(data, num_neighbors, mask, batch_size, num_workers):
+def get_dataloader(data, num_neighbors, batch_size, num_workers):
     kwargs = {'num_workers': num_workers, 'pin_memory': True,
               'persistent_workers': True if num_workers > 0 else False,
               'shuffle': True}
-    dataloader = NeighborLoader(data=data,
+    train_loader = NeighborLoader(data=data,
                                   num_neighbors=num_neighbors,
-                                  input_nodes=mask,
+                                  input_nodes=data.train_mask,
                                   batch_size=batch_size,
                                   **kwargs)
-    return dataloader
+    val_loader = NeighborLoader(data=data,
+                                num_neighbors=num_neighbors,
+                                input_nodes=data.val_mask,
+                                batch_size=1,
+                                **kwargs)
+    test_loader = NeighborLoader(data=data,
+                                 num_neighbors=num_neighbors,
+                                 input_nodes=data.test_mask,
+                                 batch_size=1,
+                                 **kwargs)
+    return train_loader, val_loader, test_loader
