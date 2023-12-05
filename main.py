@@ -26,8 +26,9 @@ from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS
 def train(model, data, optimizer, device) -> torch.Tensor:
     model.train()
     optimizer.zero_grad()
-    output = model(data.x, data.edge_index, data.edge_attr)[data.train_mask]
-    target = data.y[data.train_mask].to(device)
+    output = model(data.x.to(device), data.edge_index.to(device),
+                   data.edge_attr.to(device))[data.train_mask]
+    target = data.y.to(device)[data.train_mask]
     loss_fn = nn.CrossEntropyLoss()
     loss = loss_fn(output, target)
     loss.backward()
@@ -75,7 +76,8 @@ def initialize_optimizer(trial, model):
     return optimizer
 
 
-def objective(trial, train_loader, data, dataset,
+def objective(trial,
+              train_loader, val_loader, test_loader, data, dataset,
               args: argparse.Namespace,
               device: torch.device) -> torch.Tensor:
     model = initialize_model(trial, dataset, args)
@@ -89,24 +91,29 @@ def objective(trial, train_loader, data, dataset,
     
     for epoch in range(1, args.epochs+1):
         total_loss = 0
-        start = time.time()
+        total_val_acc, total_test_acc = 0, 0
         
         model.to(device)
         for batch in train_loader:
-            batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch, device)
+            batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
             loss = train(model, batch, optimizer, device)
             total_loss += loss
+        
+        for batch in val_loader:
+            batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
+            val_acc = test(model, batch, data.val_mask, device)
+            total_val_acc += val_acc
+        
+        for batch in test_loader:
+            batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
+            test_acc = test(model, batch, data.test_mask, device)
+            total_test_acc += test_acc
     
         loss = total_loss / len(train_loader)
-        train_time = time.time()-start
-        print(f'memory used after training: {torch.cuda.memory_allocated(device=device) // 1e+6}')
+        val_acc = total_val_acc / len(val_loader)
+        test_acc = total_test_acc / len(test_loader)
         
-        start = time.time()
-        
-        val_acc, test_acc = evaluate(model, data, device)
-        print(f'memory used after val, test: {torch.cuda.memory_allocated(device=device) // 1e+6}')
         scheduler.step(val_acc)
-        print(f'training time: {train_time:.4f}, val, test time: {time.time()-start:.4f}')
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
@@ -208,13 +215,10 @@ def main(args: argparse.Namespace):
     number of val nodes: {data.val_mask.sum()}
     number of test nodes: {data.test_mask.sum()}''')
     
-    start = time.time()
-    train_loader = get_dataloader(data=data,
-                                  num_neighbors=args.num_neighbors,
-                                  mask=data.train_mask,
-                                  batch_size=args.batch_size,
-                                  num_workers=args.num_workers)
-    print(f'train_loader time: {time.time()-start}')
+    train_loader, val_loader, test_loader = get_dataloader(data=data,
+                                                           num_neighbors=args.num_neighbors,
+                                                           batch_size=args.batch_size,
+                                                           num_workers=args.num_workers)
 
     study_name = f'{args.dataset}_{args.model}_study'
     storage_name = 'sqlite:///planetoid-study.db'
@@ -230,6 +234,8 @@ def main(args: argparse.Namespace):
    
     partial_objective = partial(objective,
                                 train_loader=train_loader,
+                                val_loader=val_loader,
+                                test_loader=test_loader,
                                 data=data, dataset=dataset,
                                 args=args, device=device)
             

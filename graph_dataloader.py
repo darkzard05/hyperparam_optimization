@@ -6,11 +6,11 @@ from torch_geometric.datasets import Planetoid, Reddit
 import torch_geometric.transforms as T
 
 
-def preprocess_data(data, device) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def preprocess_data(data) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     x = (data.x - data.x.mean()) / data.x.std()
     edge_index = data.edge_index
     edge_attr = data.edge_attr
-    return x.to(device), edge_index.to(device), edge_attr.to(device)
+    return x, edge_index, edge_attr
 
 
 def get_dataset(path, name, transform=T.TargetIndegree()):
@@ -32,11 +32,11 @@ def get_dataloader(data, num_neighbors, batch_size, num_workers):
     val_loader = NeighborLoader(data=data,
                                 num_neighbors=num_neighbors,
                                 input_nodes=data.val_mask,
-                                batch_size=1,
+                                batch_size=batch_size,
                                 **kwargs)
     test_loader = NeighborLoader(data=data,
                                  num_neighbors=num_neighbors,
                                  input_nodes=data.test_mask,
-                                 batch_size=1,
+                                 batch_size=batch_size,
                                  **kwargs)
     return train_loader, val_loader, test_loader
