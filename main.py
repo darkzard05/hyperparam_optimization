@@ -36,7 +36,7 @@ def train(model, data, optimizer, device) -> torch.Tensor:
     return loss
 
 
-def test(model, data, mask, device) -> torch.Tensor:
+def test(model, data, device) -> torch.Tensor:
     model.eval()
     with torch.no_grad():
         output = model(data.x.to(device), data.edge_index.to(device),
@@ -44,7 +44,7 @@ def test(model, data, mask, device) -> torch.Tensor:
         target = data.y.to(device)
         pred = output.argmax(dim=1)
         correct = (pred == target)
-        accuracy = correct.sum() / mask.sum()
+        accuracy = correct.sum() / len(target)
     return accuracy
 
 
@@ -101,12 +101,12 @@ def objective(trial,
         
         for batch in val_loader:
             batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
-            val_acc = test(model, batch, data.val_mask, device)
+            val_acc = test(model, batch, device)
             total_val_acc += val_acc
         
         for batch in test_loader:
             batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
-            test_acc = test(model, batch, data.test_mask, device)
+            test_acc = test(model, batch, device)
             total_test_acc += test_acc
     
         loss = total_loss / len(train_loader)
