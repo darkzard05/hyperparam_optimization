@@ -48,12 +48,6 @@ def test(model, data, device) -> torch.Tensor:
     return accuracy
 
 
-def evaluate(model, data, device) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    val_ = test(model, data.subgraph(data.val_mask), data.val_mask, device)
-    test_ = test(model, data.subgraph(data.test_mask), data.test_mask, device)
-    return val_, test_
-
-
 def initialize_model(trial, dataset,
                      args: argparse.Namespace):
     model_class_name = args.model+'Model'
@@ -83,9 +77,8 @@ def objective(trial,
     model = initialize_model(trial, dataset, args)
     optimizer = initialize_optimizer(trial, model)
     
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
-                                                     mode='min', factor=0.5, patience=10,
-                                                     verbose=True)
+    scheduler = optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=1,
+                                          gamma=0.85)
     
     best_val_acc, best_test_acc = 0, 0
     
