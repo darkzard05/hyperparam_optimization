@@ -2,6 +2,7 @@ import os
 import json
 import datetime, time
 import argparse
+from tqdm import tqdm
 from typing import Tuple
 from functools import partial
 
@@ -87,17 +88,17 @@ def objective(trial,
         total_val_acc, total_test_acc = 0, 0
         
         model.to(device)
-        for batch in train_loader:
+        for batch in tqdm(train_loader, desc='training'):
             batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
             loss = train(model, batch, optimizer, device)
             total_loss += loss
         
-        for batch in val_loader:
+        for batch in tqdm(val_loader, desc='validation'):
             batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
             val_acc = test(model, batch, device)
             total_val_acc += val_acc
         
-        for batch in test_loader:
+        for batch in tqdm(test_loader, desc='testing'):
             batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
             test_acc = test(model, batch, device)
             total_test_acc += test_acc
@@ -106,7 +107,7 @@ def objective(trial,
         val_acc = total_val_acc / len(val_loader)
         test_acc = total_test_acc / len(test_loader)
         
-        scheduler.step(val_acc)
+        scheduler.step()
         
         if best_val_acc < val_acc:
             best_val_acc = val_acc
