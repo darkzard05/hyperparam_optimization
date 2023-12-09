@@ -24,29 +24,40 @@ from hyperparams_utils import (get_common_model_params, add_extra_model_params,
 from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS
 
 
-def train(model, data, optimizer, device) -> torch.Tensor:
+def train_epoch(model, train_loader, optimizer, device) -> float:
     model.train()
-    optimizer.zero_grad()
-    output = model(data.x.to(device), data.edge_index.to(device),
-                   data.edge_attr.to(device))[data.train_mask]
-    target = data.y.to(device)[data.train_mask]
-    loss_fn = nn.CrossEntropyLoss()
-    loss = loss_fn(output, target)
-    loss.backward()
-    optimizer.step()
-    return loss
+    total_loss = 0
+    
+    for batch in tqdm(train_loader, desc='training'):
+        batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
+        optimizer.zero_grad()
+        output = model(batch.x.to(device), batch.edge_index.to(device),
+                       batch.edge_attr.to(device))[batch.train_mask]
+        target = batch.y.to(device)[batch.train_mask]
+        loss_fn = nn.CrossEntropyLoss()
+        loss = loss_fn(output, target)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+    
+    return total_loss / len(train_loader)
 
-
-def test(model, data, device) -> torch.Tensor:
+def evaluate(model, loader, device, mode='validation') -> float:
     model.eval()
+    total_acc = 0
+    
     with torch.no_grad():
-        output = model(data.x.to(device), data.edge_index.to(device),
-                       data.edge_attr.to(device))
-        target = data.y.to(device)
-        pred = output.argmax(dim=1)
-        correct = (pred == target)
-        accuracy = correct.sum() / len(target)
-    return accuracy
+        for batch in tqdm(loader, desc=mode):
+            batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
+            output = model(batch.x.to(device), batch.edge_index.to(device),
+                           batch.edge_attr.to(device))
+            target = batch.y.to(device)
+            pred = output.argmax(dim=1)
+            correct = (pred == target)
+            accuracy = correct.sum().item() / len(target)
+            total_acc += accuracy
+            
+    return total_acc / len(loader)
 
 
 def initialize_model(trial, dataset,
@@ -72,9 +83,8 @@ def initialize_optimizer(trial, model):
 
 
 def objective(trial,
-              train_loader, val_loader, test_loader, data, dataset,
-              args: argparse.Namespace,
-              device: torch.device) -> torch.Tensor:
+              train_loader, val_loader, test_loader, dataset,
+              args: argparse.Namespace, device: torch.device) -> float:
     model = initialize_model(trial, dataset, args)
     optimizer = initialize_optimizer(trial, model)
     
@@ -84,28 +94,10 @@ def objective(trial,
     best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(1, args.epochs+1):
-        total_loss = 0
-        total_val_acc, total_test_acc = 0, 0
-        
         model.to(device)
-        for batch in tqdm(train_loader, desc='training'):
-            batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
-            loss = train(model, batch, optimizer, device)
-            total_loss += loss
-        
-        for batch in tqdm(val_loader, desc='validation'):
-            batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
-            val_acc = test(model, batch, device)
-            total_val_acc += val_acc
-        
-        for batch in tqdm(test_loader, desc='testing'):
-            batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
-            test_acc = test(model, batch, device)
-            total_test_acc += test_acc
-    
-        loss = total_loss / len(train_loader)
-        val_acc = total_val_acc / len(val_loader)
-        test_acc = total_test_acc / len(test_loader)
+        train_loss = train_epoch(model, train_loader, optimizer, device)
+        val_acc = evaluate(model, val_loader, device, mode='validation')
+        test_acc = evaluate(model, test_loader, device, mode='testing')
         
         scheduler.step()
         
@@ -114,7 +106,7 @@ def objective(trial,
             best_test_acc = test_acc
             
         if epoch % LOG_INTERVAL == 0 or best_val_acc == val_acc:
-            log_message = f'epoch [{epoch}/{args.epochs}], loss: {loss:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}'
+            log_message = f'epoch [{epoch}/{args.epochs}], loss: {train_loss:.3f}, val_acc: {val_acc:.3f}, test_acc: {test_acc:.3f}'
             print(log_message)
             
         trial.report(val_acc, epoch)
@@ -230,8 +222,9 @@ def main(args: argparse.Namespace):
                                 train_loader=train_loader,
                                 val_loader=val_loader,
                                 test_loader=test_loader,
-                                data=data, dataset=dataset,
-                                args=args, device=device)
+                                dataset=dataset,
+                                args=args,
+                                device=device)
             
     study.optimize(partial_objective, n_trials=args.n_trials)
 
