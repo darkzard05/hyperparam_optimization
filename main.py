@@ -27,14 +27,13 @@ from hyperparams_config import SUPPORTED_MODELS, SUPPORTED_DATASETS
 def train_epoch(model, train_loader, optimizer, device) -> float:
     model.train()
     total_loss = 0
+    loss_fn = nn.CrossEntropyLoss()
     
     for batch in tqdm(train_loader, desc='training'):
-        batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
+        x, edge_index, edge_attr = tuple(t.to(device) for t in preprocess_data(batch))
         optimizer.zero_grad()
-        output = model(batch.x.to(device), batch.edge_index.to(device),
-                       batch.edge_attr.to(device))[batch.train_mask]
+        output = model(x, edge_index, edge_attr)[batch.train_mask]
         target = batch.y.to(device)[batch.train_mask]
-        loss_fn = nn.CrossEntropyLoss()
         loss = loss_fn(output, target)
         loss.backward()
         optimizer.step()
@@ -48,9 +47,8 @@ def evaluate(model, loader, device, mode='validation') -> float:
     
     with torch.no_grad():
         for batch in tqdm(loader, desc=mode):
-            batch.x, batch.edge_index, batch.edge_attr = preprocess_data(batch)
-            output = model(batch.x.to(device), batch.edge_index.to(device),
-                           batch.edge_attr.to(device))
+            x, edge_index, edge_attr = tuple(t.to(device) for t in preprocess_data(batch))
+            output = model(x, edge_index, edge_attr)
             target = batch.y.to(device)
             pred = output.argmax(dim=1)
             correct = (pred == target)
@@ -69,8 +67,10 @@ def initialize_model(trial, dataset,
                     'out_channels': dataset.num_classes,
                     **model_common_params}
     model_extra_params = add_extra_model_params(trial, args.model)
-    model_params.update(model_extra_params)    
-    model = nn_model.__dict__[model_class_name](model_params)
+    model_params.update(model_extra_params)
+    
+    model_class = getattr(nn_model, model_class_name)
+    model = model_class(model_params)
     return model
 
 
@@ -159,7 +159,7 @@ def display_results(study,
     for key, value in trial.params.items():
         value_str = f'{value:.4f}' if isinstance(value, float) else str(value)
         print(f'      {key}: {value_str}')
-    
+
 
 def valid_positive_int(x) -> int:
     try:
