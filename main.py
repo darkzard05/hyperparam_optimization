@@ -58,13 +58,12 @@ def evaluate(model, loader, device, mode='validation') -> float:
     return total_acc / len(loader)
 
 
-def initialize_model(trial, dataset,
+def initialize_model(trial, in_channels, out_channels,
                      args: argparse.Namespace):
     model_class_name = args.model+'Model'
     model_common_params = get_common_model_params(trial)
     
-    model_params = {'in_channels': dataset[0].num_features,
-                    'out_channels': dataset.num_classes,
+    model_params = {'in_channels': in_channels, 'out_channels': out_channels,
                     **model_common_params}
     model_extra_params = add_extra_model_params(trial, args.model)
     model_params.update(model_extra_params)
@@ -74,7 +73,7 @@ def initialize_model(trial, dataset,
     return model
 
 
-def initialize_optimizer(trial, model):
+def initialize_optimizer(trial, model) -> optim.Optimizer:
     optim_params = get_optim_params(trial)
     optimizer = optim.__dict__[optim_params['optimizer']](model.parameters(),
                                                           lr=optim_params['learning_rate'],
@@ -83,18 +82,19 @@ def initialize_optimizer(trial, model):
 
 
 def objective(trial,
-              train_loader, val_loader, test_loader, dataset,
+              train_loader, val_loader, test_loader,
+              in_channels, out_channels,
               args: argparse.Namespace, device: torch.device) -> float:
-    model = initialize_model(trial, dataset, args)
+    model = initialize_model(trial, in_channels, out_channels, args).to(device)
     optimizer = initialize_optimizer(trial, model)
     
-    scheduler = optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=1,
+    scheduler = optim.lr_scheduler.StepLR(optimizer=optimizer,
+                                          step_size=1,
                                           gamma=0.85)
     
     best_val_acc, best_test_acc = 0, 0
     
     for epoch in range(1, args.epochs+1):
-        model.to(device)
         train_loss = train_epoch(model, train_loader, optimizer, device)
         val_acc = evaluate(model, val_loader, device, mode='validation')
         test_acc = evaluate(model, test_loader, device, mode='testing')
@@ -191,10 +191,12 @@ def parser_arguments():
 def main(args: argparse.Namespace):
     dataset_path = os.path.join(DATA_DEFAULT_PATH, args.dataset)
     dataset = get_dataset(path=dataset_path, name=args.dataset, transform=T.TargetIndegree())
+    data = dataset[0]
+    in_channels, out_channels = dataset.num_node_features, dataset.num_classes
         
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data = dataset[0]
-    print(f'''dataset name: {args.dataset}
+    print(f'''Dataset Information:
+    dataset name: {args.dataset}
     number of nodes: {data.num_nodes}
     number of features: {data.num_node_features}
     number of train nodes: {data.train_mask.sum()}
@@ -222,7 +224,8 @@ def main(args: argparse.Namespace):
                                 train_loader=train_loader,
                                 val_loader=val_loader,
                                 test_loader=test_loader,
-                                dataset=dataset,
+                                in_channels=in_channels,
+                                out_channels=out_channels,
                                 args=args,
                                 device=device)
             
